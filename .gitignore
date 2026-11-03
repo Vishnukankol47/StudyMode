@@ -1,0 +1,51 @@
+# Built application files
+*.apk
+*.aar
+*.ap_
+*.aab
+*.xapk
+
+# Keystore files (CRITICAL: Never commit your signing keys to GitHub)
+*.jks
+*.keystore
+studymode-release.jks
+
+# Gradle build directories
+.gradle/
+build/
+app/build/
+
+# Local configuration file (sdk.dir, etc.)
+local.properties
+
+# Android Studio / IntelliJ IDEA
+.idea/
+*.iml
+.navigation/
+
+# Log files
+*.log
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Database and scratch files
+*.sqlite
+*.db
+local_studymode.db
+db.sqlite
+
+# Scratch scripts and temporary analysis files
+/regain_extracted/
+/regain_manifest.txt
+/res/
+/AndroidManifest.xml
+/studymode.xapk
+/img2_*.png
+/dialog_crop.png
+find_*.py
+list_methods.py
+read_axml.py
+temp_*.py
+fix_*.py
