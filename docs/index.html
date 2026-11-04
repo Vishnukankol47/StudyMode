@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StudyMode — Mindful Shorts & Reels Counter for Android</title>
+    <meta name="description" content="Break mindless doomscrolling on YouTube Shorts & Instagram Reels with a live floating counter + Zen Mode. 100% on-device, zero ads, UPI safe.">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏔️</text></svg>">
+    
+    <!-- Open Graph for sharing on Reddit, WhatsApp, Twitter -->
+    <meta property="og:title" content="StudyMode — Live Shorts & Reels Counter for Android">
+    <meta property="og:description" content="A live number over Shorts is easier to live with than a harsh block. 100% on-device, zero tracking, strict UPI isolation.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://vishnukankol47.github.io/StudyMode/">
+
+    <style>
+        :root {
+            --bg-dark: #0a0e0b;
+            --panel-bg: #111713;
+            --panel-border: #1e2920;
+            --accent-green: #4ade80;
+            --accent-glow: rgba(74, 222, 128, 0.25);
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+            --pill-bg: #151c16;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            line-height: 1.6;
+            padding: 0 1.25rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 860px;
+            width: 100%;
+            margin: 0 auto;
+            padding: 3rem 0;
+        }
+
+        /* Header / Hero */
+        header {
+            text-align: center;
+            margin-bottom: 3.5rem;
+        }
+
+        .badge-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.35rem 0.85rem;
+            background: rgba(74, 222, 128, 0.1);
+            border: 1px solid rgba(74, 222, 128, 0.3);
+            border-radius: 9999px;
+            color: var(--accent-green);
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+        }
+
+        h1 {
+            font-size: 2.75rem;
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            line-height: 1.15;
+            margin-bottom: 1.25rem;
+            background: linear-gradient(135deg, #ffffff 40%, #86efac 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        p.lead {
+            font-size: 1.2rem;
+            color: var(--text-muted);
+            max-width: 640px;
+            margin: 0 auto 2.25rem auto;
+        }
+
+        /* Call To Action Buttons */
+        .cta-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 2rem;
+        }
+
+        .btn-download {
+            background: linear-gradient(135deg, #22c55e, #16a34a);
+            color: #051408;
+            font-size: 1.1rem;
+            font-weight: 700;
+            text-decoration: none;
+            padding: 0.9rem 2rem;
+            border-radius: 14px;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.65rem;
+            box-shadow: 0 10px 25px -5px rgba(34, 197, 94, 0.4);
+            transition: all 0.2s ease;
+        }
+
+        .btn-download:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 15px 30px -5px rgba(34, 197, 94, 0.5);
+        }
+
+        .btn-github {
+            background: var(--panel-bg);
+            color: var(--text-main);
+            border: 1px solid var(--panel-border);
+            font-size: 1.05rem;
+            font-weight: 600;
+            text-decoration: none;
+            padding: 0.85rem 1.6rem;
+            border-radius: 14px;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.6rem;
+            transition: all 0.2s ease;
+        }
+
+        .btn-github:hover {
+            background: #19241b;
+            border-color: #2c3e2e;
+        }
+
+        .apk-meta {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 1rem;
+            margin-top: 0.5rem;
+        }
+
+        /* Interactive Counter Simulation */
+        .preview-card {
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: 20px;
+            padding: 2.25rem;
+            margin: 3rem 0;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .preview-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, #4ade80, #facc15, #ef4444);
+        }
+
+        .hud-pills-row {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 1.25rem;
+            margin: 1.75rem 0;
+        }
+
+        .hud-pill {
+            background: #0f1610;
+            border: 1.5px solid var(--accent-green);
+            box-shadow: 0 0 15px var(--accent-glow);
+            padding: 0.6rem 1.2rem;
+            border-radius: 9999px;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.6rem;
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: white;
+            animation: pulse-border 2.5s infinite;
+        }
+
+        .hud-pill.amber {
+            border-color: #facc15;
+            box-shadow: 0 0 15px rgba(250, 204, 21, 0.25);
+        }
+
+        .hud-pill.red {
+            border-color: #ef4444;
+            box-shadow: 0 0 15px rgba(239, 68, 68, 0.3);
+        }
+
+        @keyframes pulse-border {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+        }
+
+        /* Feature Grid */
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 1.5rem;
+            margin: 3.5rem 0;
+        }
+
+        .feature-box {
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: 16px;
+            padding: 1.5rem;
+            transition: transform 0.2s ease;
+        }
+
+        .feature-box:hover {
+            transform: translateY(-3px);
+            border-color: #2b3d2e;
+        }
+
+        .feature-icon {
+            font-size: 2rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .feature-title {
+            font-size: 1.15rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        .feature-desc {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+        }
+
+        /* Trust & Security Table */
+        .trust-section {
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: 18px;
+            padding: 2rem;
+            margin: 3rem 0;
+        }
+
+        .trust-section h2 {
+            font-size: 1.6rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .trust-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1.25rem;
+            font-size: 0.9rem;
+        }
+
+        .trust-table th, .trust-table td {
+            padding: 0.85rem 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--panel-border);
+        }
+
+        .trust-table th {
+            color: var(--accent-green);
+            font-weight: 600;
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .trust-table td {
+            color: #d1d5db;
+        }
+
+        /* QR Code Card */
+        .qr-card {
+            background: #0f1510;
+            border: 1px dashed var(--accent-green);
+            border-radius: 16px;
+            padding: 1.75rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 2rem;
+            flex-wrap: wrap;
+            margin: 3rem 0;
+        }
+
+        .qr-card img {
+            border-radius: 12px;
+            background: white;
+            padding: 8px;
+        }
+
+        .qr-text {
+            max-width: 380px;
+        }
+
+        .qr-text h3 {
+            font-size: 1.25rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .qr-text p {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+        }
+
+        footer {
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            padding: 3rem 0 2rem 0;
+            border-top: 1px solid var(--panel-border);
+            width: 100%;
+        }
+
+        footer a {
+            color: var(--accent-green);
+            text-decoration: none;
+        }
+
+        @media (max-width: 640px) {
+            h1 { font-size: 2.15rem; }
+            .btn-download { width: 100%; justify-content: center; }
+            .btn-github { width: 100%; justify-content: center; }
+            .qr-card { text-align: center; justify-content: center; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+
+        <!-- Hero Header -->
+        <header>
+            <div class="badge-pill">
+                <span>⚡</span> v1.0.0 Now Available • 100% Free & Open Source
+            </div>
+            <h1>A number over Shorts is easier to live with than a block.</h1>
+            <p class="lead">
+                StudyMode floats a real-time swipe counter and timer directly over YouTube Shorts and Instagram Reels so you regain mindful awareness without harsh lockouts.
+            </p>
+
+            <div class="cta-group">
+                <a href="https://github.com/Vishnukankol47/StudyMode/releases/latest/download/StudyMode-v1.0.0.apk" class="btn-download">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Download APK (v1.0.0)
+                </a>
+                <a href="https://github.com/Vishnukankol47/StudyMode" class="btn-github">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+                    View Source on GitHub
+                </a>
+            </div>
+
+            <div class="apk-meta">
+                <span>📦 14.6 MB</span>
+                <span>•</span>
+                <span>📱 Android 8.0+ (API 26+)</span>
+                <span>•</span>
+                <span>🛡️ SHA-256 Verified</span>
+            </div>
+        </header>
+
+        <!-- Live HUD Simulation Preview -->
+        <div class="preview-card">
+            <h3>Live Mindful Awareness Floating HUD</h3>
+            <p style="color: var(--text-muted); font-size: 0.95rem; margin-top: 0.35rem;">
+                Floats seamlessly on top of short-form videos. Updates swipe counts and elapsed time in real-time.
+            </p>
+
+            <div class="hud-pills-row">
+                <div class="hud-pill">
+                    <span style="color: #ef4444;">▶</span> 1 Short • 15s
+                </div>
+                <div class="hud-pill amber">
+                    <span style="color: #facc15;">🎬</span> 8 Reels • 2m 10s
+                </div>
+                <div class="hud-pill red">
+                    <span style="color: #ef4444;">⚡</span> 16 Shorts • 5m 30s
+                </div>
+            </div>
+
+            <div style="font-size: 0.85rem; color: #86efac; font-weight: 600;">
+                🟢 Mindful (1–5) &nbsp;──>&nbsp; 🟡 Slipping (6–15) &nbsp;──>&nbsp; 🔴 Doomscrolling Alert (16+)
+            </div>
+        </div>
+
+        <!-- Scan to Install QR Code -->
+        <div class="qr-card">
+            <img src="https://api.qrserver.com/v1/create-qr-code/?size=140x140&margin=0&data=https://github.com/Vishnukankol47/StudyMode/releases/latest/download/StudyMode-v1.0.0.apk" alt="Download QR Code" width="140" height="140">
+            <div class="qr-text">
+                <h3>Scan with your Phone</h3>
+                <p>Point your mobile camera at this QR code to download the latest <code>StudyMode-v1.0.0.apk</code> directly onto your device.</p>
+            </div>
+        </div>
+
+        <!-- Key Features Grid -->
+        <div class="features-grid">
+            <div class="feature-box">
+                <div class="feature-icon">🎬</div>
+                <div class="feature-title">Live Shorts & Reels Counter</div>
+                <div class="feature-desc">Counts every vertical swipe and records active screen time. Fully draggable anywhere on your screen.</div>
+            </div>
+
+            <div class="feature-box">
+                <div class="feature-icon">🧘</div>
+                <div class="feature-title">Zen Mode Lockout</div>
+                <div class="feature-desc">Full-screen exam lockdown with rhythmic pulse rings. Emergency calls stay accessible; distractions stay out.</div>
+            </div>
+
+            <div class="feature-box">
+                <div class="feature-icon">🛡️</div>
+                <div class="feature-title">Mindful Pre-Open Pause</div>
+                <div class="feature-desc">Breaks subconscious habit loops with a calm 10s reflection breather before opening addictive apps.</div>
+            </div>
+
+            <div class="feature-box">
+                <div class="feature-icon">🏦</div>
+                <div class="feature-title">100% UPI & Banking Safe</div>
+                <div class="feature-desc">Hardcoded safe-list strictly isolates BHIM, PhonePe, GPay, Paytm, and bank apps from inspection.</div>
+            </div>
+        </div>
+
+        <!-- Permissions Transparency Table -->
+        <div class="trust-section">
+            <h2>🛡️ Permissions & Privacy Transparency</h2>
+            <p style="color: var(--text-muted); font-size: 0.95rem;">
+                Why does StudyMode need these permissions? We believe in 100% open-source transparency:
+            </p>
+
+            <table class="trust-table">
+                <thead>
+                    <tr>
+                        <th>Permission</th>
+                        <th>What It Does</th>
+                        <th>What It CANNOT Do</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Accessibility</strong></td>
+                        <td>Detects when you open the Shorts/Reels tab to display the live counter pill.</td>
+                        <td><strong>Zero keystroke or chat access.</strong> Hardcoded to completely disconnect from all banking apps.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Display Over Apps</strong></td>
+                        <td>Floats the compact draggable HUD pill over your screen.</td>
+                        <td>Cannot draw over secure system windows (PIN keyboards, lockscreens).</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Usage Access</strong></td>
+                        <td>Computes today's screen time and daily limits on-device.</td>
+                        <td>All stats stay 100% inside your phone's local SQLite database.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Do Not Disturb</strong></td>
+                        <td>Silences notification pings automatically during study sessions.</td>
+                        <td>Never reads or stores notification messages.</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div style="margin-top: 1.5rem; padding: 1rem; background: rgba(74, 222, 128, 0.05); border-left: 3px solid var(--accent-green); border-radius: 8px;">
+                <strong>Cryptographic Guarantee:</strong> StudyMode contains <strong>zero analytics SDKs</strong>, <strong>zero ad trackers</strong>, and no remote data servers. Every single line of code is open on GitHub.
+            </div>
+        </div>
+
+        <!-- How to Install -->
+        <div class="trust-section">
+            <h2>📲 Quick 3-Step Setup</h2>
+            <ol style="margin-left: 1.5rem; margin-top: 1rem; color: #d1d5db; line-height: 1.8;">
+                <li>Download <strong><a href="https://github.com/Vishnukankol47/StudyMode/releases/latest/download/StudyMode-v1.0.0.apk" style="color: var(--accent-green);">StudyMode-v1.0.0.apk</a></strong>.</li>
+                <li>Tap the downloaded file on your Android phone and select <em>Install</em> (allow <em>Install unknown apps</em> if prompted by your browser).</li>
+                <li>Open StudyMode and toggle on <strong>Live Floating Scroll Counter</strong> under the Blocks tab. Enjoy mindful scrolling!</li>
+            </ol>
+        </div>
+
+        <!-- Footer -->
+        <footer>
+            <p>StudyMode is an open-source project licensed under the <a href="https://github.com/Vishnukankol47/StudyMode/blob/main/LICENSE">Apache License 2.0</a>.</p>
+            <p style="margin-top: 0.5rem;">Crafted for students, deep learners, and conscious smartphone users.</p>
+        </footer>
+
+    </div>
+
+</body>
+</html>

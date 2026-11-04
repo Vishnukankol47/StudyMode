@@ -501,6 +501,9 @@ fun AppsAndUsageScreen(
                     store.setAppBlocked(feature.packageName, label, true)
                     refreshData()
                 },
+                onEnableAccessibility = {
+                    showAccessibilitySetupDialog = true
+                },
             )
         }
 
@@ -561,7 +564,9 @@ fun AppsAndUsageScreen(
                             checked = floatingCounterEnabled,
                             onCheckedChange = { enabled ->
                                 store.setFloatingScrollCounterEnabled(enabled)
-                                if (enabled && !overlayEnabled) {
+                                if (enabled && !accessibilityEnabled) {
+                                    showAccessibilitySetupDialog = true
+                                } else if (enabled && !overlayEnabled) {
                                     showOverlayPermissionPrompt = true
                                 }
                                 refreshData()
@@ -571,6 +576,88 @@ fun AppsAndUsageScreen(
                                 checkedTrackColor = AppsScreenGreen,
                             ),
                         )
+                    }
+
+                    if (floatingCounterEnabled && !accessibilityEnabled) {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color(0xFF2C2210),
+                            border = androidx.compose.foundation.BorderStroke(0.8.dp, Color(0xFFFFB74D).copy(alpha = 0.6f)),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Text("⚠️", fontSize = 16.sp)
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        "Accessibility Service is OFF",
+                                        color = Color(0xFFFFB74D),
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp,
+                                    )
+                                    Text(
+                                        "Android requires Accessibility to detect Shorts & Reels and display the floating counter.",
+                                        color = Color(0xFFE2D6C0),
+                                        fontSize = 11.sp,
+                                    )
+                                }
+                                androidx.compose.material3.Button(
+                                    onClick = { showAccessibilitySetupDialog = true },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Color(0xFFFFB74D),
+                                        contentColor = Color(0xFF1F1A12),
+                                    ),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                    shape = RoundedCornerShape(8.dp),
+                                ) {
+                                    Text("Turn On", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+
+                    if (floatingCounterEnabled && !overlayEnabled) {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color(0xFF2C2210),
+                            border = androidx.compose.foundation.BorderStroke(0.8.dp, Color(0xFFFFB74D).copy(alpha = 0.6f)),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Text("🪟", fontSize = 16.sp)
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        "Appear on Top Required",
+                                        color = Color(0xFFFFB74D),
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp,
+                                    )
+                                    Text(
+                                        "Grant overlay permission so the floating counter pill can display over other apps.",
+                                        color = Color(0xFFE2D6C0),
+                                        fontSize = 11.sp,
+                                    )
+                                }
+                                androidx.compose.material3.Button(
+                                    onClick = { openOverlaySettings(context) },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Color(0xFFFFB74D),
+                                        contentColor = Color(0xFF1F1A12),
+                                    ),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                    shape = RoundedCornerShape(8.dp),
+                                ) {
+                                    Text("Grant", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
                     }
 
                     if (floatingCounterEnabled) {
@@ -1285,6 +1372,7 @@ private fun FeatureBlockCard(
     focusOnly: Boolean,
     onToggle: (Boolean) -> Unit,
     onBlockEntireApp: () -> Unit = {},
+    onEnableAccessibility: () -> Unit = {},
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -1395,29 +1483,46 @@ private fun FeatureBlockCard(
             if (isShortsBlocked && !isAppFullyBlocked && !accessibilityEnabled) {
                 Surface(
                     shape = RoundedCornerShape(10.dp),
-                    color = Color(0xFF132215),
-                    border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFF28542D)),
+                    color = Color(0xFF1E1810),
+                    border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFFFFB74D).copy(alpha = 0.5f)),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Row(
+                    Column(
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
                         Text(
-                            "Prefer 100% UPI-safe blocking?",
-                            color = Color(0xFF86EFAC),
+                            "In-app tab filtering requires Accessibility Service.",
+                            color = Color(0xFFFFB74D),
                             fontSize = 11.sp,
-                            modifier = Modifier.weight(1f),
+                            fontWeight = FontWeight.SemiBold,
                         )
-                        androidx.compose.material3.OutlinedButton(
-                            onClick = onBlockEntireApp,
-                            shape = RoundedCornerShape(8.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF4ADE80)),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF28542D)),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            Text("Block Full App", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            androidx.compose.material3.Button(
+                                onClick = onEnableAccessibility,
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFFFFB74D),
+                                    contentColor = Color(0xFF1E1810),
+                                ),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                modifier = Modifier.weight(1f),
+                            ) {
+                                Text("Enable Access", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                            androidx.compose.material3.OutlinedButton(
+                                onClick = onBlockEntireApp,
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF86EFAC)),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF28542D)),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                modifier = Modifier.weight(1f),
+                            ) {
+                                Text("Block Full App", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }

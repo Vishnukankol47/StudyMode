@@ -440,14 +440,14 @@ internal fun AccessibilitySetupDialog(
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         Text(
-                            "💳 Using BHIM, GPay, or UPI apps?",
+                            "⚡ Required for Shorts / Reels Counter & Micro-Blocking",
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF80D957),
                             fontSize = 13.sp,
                         )
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            "You do NOT need Accessibility enabled! StudyMode includes a built-in background blocker (Usage Access + Display Over Other Apps) that works safely without triggering BHIM or banking security warnings. Only enable Accessibility if you prefer instant zero-delay blocking.",
+                            "Android strictly requires the Accessibility Service to detect in-app video scrolling and display the live floating counter pill over YouTube Shorts and Instagram Reels. (Full-app blocking remains 100% functional without it to keep UPI apps safe).",
                             color = Color(0xFFBCE3BE),
                             fontSize = 12.sp,
                             lineHeight = 16.sp,
