@@ -1,5 +1,6 @@
 package com.studymode.app
 
+import android.accessibilityservice.AccessibilityService
 import android.content.Context
 import android.graphics.Color
 import android.graphics.PixelFormat
@@ -39,7 +40,8 @@ object ShortsBlockOverlayManager {
         lastShownMillis = now
 
         mainHandler.post {
-            if (!Settings.canDrawOverlays(context)) {
+            val isAccessibility = context is AccessibilityService
+            if (!isAccessibility && !Settings.canDrawOverlays(context)) {
                 // Fallback to stylized Toast if overlay permission is not granted
                 Toast.makeText(
                     context,
@@ -52,11 +54,23 @@ object ShortsBlockOverlayManager {
             dismissInternal(context)
 
             try {
-                val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-                val density = context.resources.displayMetrics.density
+                val (targetContext, windowType) = if (isAccessibility) {
+                    Pair(context, WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY)
+                } else {
+                    val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                    } else {
+                        @Suppress("DEPRECATION")
+                        WindowManager.LayoutParams.TYPE_PHONE
+                    }
+                    Pair(context.applicationContext ?: context, type)
+                }
+
+                val windowManager = targetContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+                val density = targetContext.resources.displayMetrics.density
 
                 // Container layout (Sleek dark card with neon red/gold accent)
-                val container = LinearLayout(context).apply {
+                val container = LinearLayout(targetContext).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
                     val padH = (16 * density).toInt()
@@ -73,7 +87,7 @@ object ShortsBlockOverlayManager {
                 }
 
                 // Mascot / Icon
-                val iconView = ImageView(context).apply {
+                val iconView = ImageView(targetContext).apply {
                     val iconSize = (34 * density).toInt()
                     layoutParams = LinearLayout.LayoutParams(iconSize, iconSize).apply {
                         marginEnd = (12 * density).toInt()
@@ -89,7 +103,7 @@ object ShortsBlockOverlayManager {
                 container.addView(iconView)
 
                 // Text column
-                val textCol = LinearLayout(context).apply {
+                val textCol = LinearLayout(targetContext).apply {
                     orientation = LinearLayout.VERTICAL
                     layoutParams = LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -97,7 +111,7 @@ object ShortsBlockOverlayManager {
                     )
                 }
 
-                val titleView = TextView(context).apply {
+                val titleView = TextView(targetContext).apply {
                     text = "$platformName Blocked!"
                     setTextColor(Color.parseColor("#FFFFFF"))
                     textSize = 14f
@@ -105,7 +119,7 @@ object ShortsBlockOverlayManager {
                 }
                 textCol.addView(titleView)
 
-                val subtitleView = TextView(context).apply {
+                val subtitleView = TextView(targetContext).apply {
                     text = "Mindless scrolling prevented • Focus protected"
                     setTextColor(Color.parseColor("#A5B2A5"))
                     textSize = 11f
@@ -113,13 +127,6 @@ object ShortsBlockOverlayManager {
                 textCol.addView(subtitleView)
 
                 container.addView(textCol)
-
-                val windowType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-                } else {
-                    @Suppress("DEPRECATION")
-                    WindowManager.LayoutParams.TYPE_PHONE
-                }
 
                 val params = WindowManager.LayoutParams(
                     WindowManager.LayoutParams.WRAP_CONTENT,
@@ -135,7 +142,20 @@ object ShortsBlockOverlayManager {
                     windowAnimations = android.R.style.Animation_Toast
                 }
 
-                windowManager.addView(container, params)
+                try {
+                    windowManager.addView(container, params)
+                } catch (e: Exception) {
+                    val fallbackContext = context.applicationContext ?: context
+                    val fallbackWm = fallbackContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+                    params.type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                    } else {
+                        @Suppress("DEPRECATION")
+                        WindowManager.LayoutParams.TYPE_PHONE
+                    }
+                    fallbackWm.addView(container, params)
+                }
+
                 overlayView = container
                 isShowing = true
 
@@ -158,9 +178,19 @@ object ShortsBlockOverlayManager {
 
         overlayView?.let { view ->
             try {
-                val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-                windowManager.removeViewImmediate(view)
-            } catch (_: Exception) {}
+                val wm = (if (context is AccessibilityService) context else (context.applicationContext ?: context))
+                    .getSystemService(Context.WINDOW_SERVICE) as WindowManager
+                if (view.isAttachedToWindow) {
+                    wm.removeViewImmediate(view)
+                }
+            } catch (_: Exception) {
+                try {
+                    val appWm = context.applicationContext?.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+                    if (view.isAttachedToWindow) {
+                        appWm?.removeViewImmediate(view)
+                    }
+                } catch (_: Exception) {}
+            }
         }
         overlayView = null
         isShowing = false

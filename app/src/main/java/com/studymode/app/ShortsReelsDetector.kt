@@ -17,7 +17,7 @@ import android.view.accessibility.AccessibilityNodeInfo
  *   5. Absence of long-form SeekBar (timestamp scrubber) = NOT a regular video player
  *   6. Text/description markers: "Shorts", "Reels", "Spotlight"
  *
- * Session Latch & Grace Period (Regain Architecture):
+ * Session Latch & Grace Period:
  *   - Once Shorts/Reels mode is confirmed, a latch keeps the session alive even if YouTube dims
  *     or fades out control nodes after a few seconds of watching without touching the screen.
  *   - Transient System UI events (volume adjustment, notification banners, IME) are isolated so
@@ -170,37 +170,9 @@ object ShortsReelsDetector {
             else -> false
         }
 
-        // 4. Micro-Blocker Enforcement
-        if (isMicroBlockActive) {
-            isShortsSessionActive = false
-            if (now - lastInterceptMillis >= THROTTLE_INTERVAL_MILLIS) {
-                lastInterceptMillis = now
-                store.incrementShortsBlockedCount()
-
-                service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
-
-                var homeClicked = false
-                try {
-                    homeClicked = homeTabToClick?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true
-                } catch (_: Exception) {}
-
-                if (!homeClicked && isYouTube) {
-                    try {
-                        val launchIntent = service.packageManager.getLaunchIntentForPackage(packageName)
-                        launchIntent?.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                        if (launchIntent != null) {
-                            service.startActivity(launchIntent)
-                        }
-                    } catch (_: Exception) {}
-                }
-
-                ShortsBlockOverlayManager.show(service, platformName)
-                FloatingScrollCounterOverlayManager.hide(service)
-            }
-            return true
-        }
-
-        // 5. Mindful Floating Scroll Counter HUD
+        // Priority 1: Mindful Floating Scroll Counter HUD (Option B)
+        // If user enabled the Live Floating Scroll Counter, display HUD over Shorts/Reels
+        // and enforce the session limit (if limit > 0)
         if (scrollCounterEnabled) {
             val isScrollEvent = event?.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED
             val digest = detectionResult.digest
@@ -238,6 +210,37 @@ object ShortsReelsDetector {
             return true
         }
 
+        // Priority 2: Zero-Tolerance Micro-Blocker Enforcement (Option A)
+        // If floating counter is disabled, but micro-blocker is active, block immediately
+        if (isMicroBlockActive) {
+            isShortsSessionActive = false
+            if (now - lastInterceptMillis >= THROTTLE_INTERVAL_MILLIS) {
+                lastInterceptMillis = now
+                store.incrementShortsBlockedCount()
+
+                service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+
+                var homeClicked = false
+                try {
+                    homeClicked = homeTabToClick?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true
+                } catch (_: Exception) {}
+
+                if (!homeClicked && isYouTube) {
+                    try {
+                        val launchIntent = service.packageManager.getLaunchIntentForPackage(packageName)
+                        launchIntent?.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                        if (launchIntent != null) {
+                            service.startActivity(launchIntent)
+                        }
+                    } catch (_: Exception) {}
+                }
+
+                ShortsBlockOverlayManager.show(service, platformName)
+                FloatingScrollCounterOverlayManager.hide(service)
+            }
+            return true
+        }
+
         return false
     }
 
@@ -248,7 +251,7 @@ object ShortsReelsDetector {
     )
 
     // ─────────────────────────────────────────────────────────────
-    // YouTube Shorts  (Modern Scrub-Tolerant & Regain Hashing)
+    // YouTube Shorts  (Modern Scrub-Tolerant & Hashing)
     // ─────────────────────────────────────────────────────────────
     private fun detectYouTubeShorts(root: AccessibilityNodeInfo): DetectionResult? {
         val nodes = mutableListOf<AccessibilityNodeInfo>()
@@ -281,7 +284,7 @@ object ShortsReelsDetector {
 
             if (text.isNotBlank() && text.length in 2..120) contentTexts.add(text)
 
-            // Extract numeric engagement counts (Regain extractNumbersFromReels style)
+            // Extract numeric engagement counts
             val trimmedText = text.trim()
             val trimmedDesc = desc.trim()
             if (engagementCountPattern.matches(trimmedText)) {
@@ -290,7 +293,7 @@ object ShortsReelsDetector {
                 engagementNumbers.add(trimmedDesc)
             }
 
-            // Creator handle starting with '@' (e.g. @eliaszacariasart, @SujithKottakkal)
+            // Creator handle starting with '@' (e.g. @flatlandstories, @SujithKottakkal)
             if (channelHandleText.isEmpty()) {
                 if (text.startsWith("@") && text.length in 2..40) {
                     channelHandleText = text
@@ -373,7 +376,7 @@ object ShortsReelsDetector {
             }
         }
 
-        // Regain-style likeCommentDigest combining channel handle, engagement numbers and title
+        // LikeCommentDigest combining channel handle, engagement numbers and title
         val numbersDigest = engagementNumbers.take(4).joinToString("#")
         val contentDigest = contentTexts.take(3).joinToString("|")
         val digest = when {
@@ -476,18 +479,26 @@ object ShortsReelsDetector {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // Instagram Reels  (Deep Scan)
+    // Instagram Reels  (Deep Scan - 2024/2025/2026 Litho/Compose)
     // ─────────────────────────────────────────────────────────────
     private fun detectInstagramReels(root: AccessibilityNodeInfo): DetectionResult? {
         val nodes = mutableListOf<AccessibilityNodeInfo>()
-        flattenNodes(root, nodes, maxNodes = 250)
+        flattenNodes(root, nodes, maxNodes = 450)
 
         var isReelsTabSelected = false
         var homeTabNode: AccessibilityNodeInfo? = null
         var hasReelsByResourceId = false
-        var hasReelsActionButton = false
+        var hasLikeButton = false
+        var hasCommentButton = false
+        var hasShareButton = false
+        var hasAudioTrack = false
+        var hasFollowButton = false
         var hasReelsHeader = false
+        var creatorHandle = ""
+
+        val engagementNumbers = mutableListOf<String>()
         val contentTexts = mutableListOf<String>()
+        val engagementCountPattern = Regex("""^(\d+(\.\d+)?[KM]?)$""", RegexOption.IGNORE_CASE)
 
         for (node in nodes) {
             val desc = node.contentDescription?.toString() ?: ""
@@ -498,48 +509,115 @@ object ShortsReelsDetector {
 
             if (text.isNotBlank() && text.length in 2..80) contentTexts.add(text)
 
-            // Bottom tabs
-            if ((descLower.contains("reels") || descLower.contains("reel")) &&
-                (node.isSelected || node.isFocused)
-            ) {
-                isReelsTabSelected = true
+            // Numeric counts (like / comment / share numbers)
+            val trimmedText = text.trim()
+            val trimmedDesc = desc.trim()
+            if (engagementCountPattern.matches(trimmedText)) {
+                engagementNumbers.add(trimmedText)
+            } else if (engagementCountPattern.matches(trimmedDesc)) {
+                engagementNumbers.add(trimmedDesc)
             }
-            if (descLower.contains("home") || descLower.contains("feed") || descLower.contains("instagram")) {
-                if (homeTabNode == null) homeTabNode = node
+
+            // Creator handle starting with '@'
+            if (creatorHandle.isEmpty()) {
+                if (text.startsWith("@") && text.length in 2..40) {
+                    creatorHandle = text
+                } else if (desc.startsWith("@") && desc.length in 2..40) {
+                    creatorHandle = desc
+                }
+            }
+
+            // Bottom Navigation Tabs (supports "Reels", "Reels, selected", "Reels, tab")
+            if (descLower.contains("reels") || descLower.contains("reel")) {
+                if (node.isSelected || node.isFocused || descLower.contains("selected") || descLower.contains("tab")) {
+                    isReelsTabSelected = true
+                }
+            }
+            if ((descLower.contains("home") || descLower.contains("feed") || descLower.contains("main")) && homeTabNode == null) {
+                homeTabNode = node
             }
 
             // Resource IDs
-            if (resId.contains("reel") || resId.contains("clips") || resId.contains("unified_clips")) {
+            if (resId.contains("reel") ||
+                resId.contains("clips") ||
+                resId.contains("unified_clips") ||
+                resId.contains("clips_video_container") ||
+                resId.contains("reel_viewer") ||
+                resId.contains("clips_swipe_refresh_container") ||
+                resId.contains("clips_action_button") ||
+                resId.contains("clips_media_item") ||
+                resId.contains("reel_tag")
+            ) {
                 hasReelsByResourceId = true
             }
 
-            // Action buttons unique to Reels player
-            if (descLower.contains("like reel") ||
-                descLower.contains("unlike reel") ||
-                descLower.contains("audio for reel") ||
-                descLower.contains("remix with reel") ||
-                descLower.contains("comment on reel") ||
-                descLower.contains("share reel") ||
-                descLower.contains("send reel") ||
-                resId.contains("clips_share_button") ||
-                resId.contains("reel_action") ||
-                resId.contains("clips_like") ||
-                resId.contains("layout_comment_thread")
+            // Engagement / Action Buttons
+            if (descLower == "like" || descLower.contains("like reel") ||
+                descLower.contains("double tap to like") || descLower == "liked" ||
+                resId.contains("clips_like") || resId.contains("like_button")
             ) {
-                hasReelsActionButton = true
+                hasLikeButton = true
+            }
+            if (descLower == "comment" || descLower.contains("comments") ||
+                descLower.contains("comment on reel") || resId.contains("comment")
+            ) {
+                hasCommentButton = true
+            }
+            if (descLower == "share" || descLower.contains("share reel") ||
+                descLower.contains("send post") || descLower.contains("send reel") ||
+                resId.contains("share") || resId.contains("clips_share")
+            ) {
+                hasShareButton = true
+            }
+            if (descLower.contains("audio") || descLower.contains("sound") ||
+                descLower.contains("original audio") || resId.contains("audio")
+            ) {
+                hasAudioTrack = true
+            }
+            if (descLower == "follow" || textLower == "follow" ||
+                descLower == "following" || textLower == "following"
+            ) {
+                hasFollowButton = true
             }
 
-            // "Reels" header text at the top of feed
+            // Header text "Reels" at top
             if (textLower == "reels" || descLower == "reels") {
                 hasReelsHeader = true
             }
         }
 
-        val digest = contentTexts.take(3).joinToString("|")
+        // Digest combining creator handle, counts and text for swipe detection
+        val numbersDigest = engagementNumbers.take(4).joinToString("#")
+        val contentDigest = contentTexts.take(3).joinToString("|")
+        val digest = when {
+            creatorHandle.isNotBlank() && numbersDigest.isNotBlank() -> "$creatorHandle#$numbersDigest"
+            creatorHandle.isNotBlank() -> "$creatorHandle|$contentDigest"
+            numbersDigest.isNotBlank() -> "$numbersDigest|$contentDigest"
+            else -> contentDigest
+        }
 
-        if (isReelsTabSelected || hasReelsByResourceId || hasReelsActionButton ||
-            (hasReelsHeader && contentTexts.size > 5)
-        ) {
+        // Case 1: Bottom Reels tab selected — definitive
+        if (isReelsTabSelected) {
+            return DetectionResult("Instagram Reels", digest, homeTabNode)
+        }
+
+        // Case 2: Clips/Reels container resource ID
+        if (hasReelsByResourceId) {
+            return DetectionResult("Instagram Reels", digest, homeTabNode)
+        }
+
+        // Case 3: Action pillar combinations characteristic of full-screen Reels viewer
+        if ((hasLikeButton && hasCommentButton) || (hasLikeButton && hasAudioTrack)) {
+            return DetectionResult("Instagram Reels", digest, homeTabNode)
+        }
+
+        // Case 4: Creator handle + Follow button + Share/Audio
+        if (creatorHandle.isNotBlank() && (hasFollowButton || hasAudioTrack)) {
+            return DetectionResult("Instagram Reels", digest, homeTabNode)
+        }
+
+        // Case 5: Reels header + at least 1 action button
+        if (hasReelsHeader && (hasLikeButton || hasCommentButton || hasShareButton)) {
             return DetectionResult("Instagram Reels", digest, homeTabNode)
         }
 
@@ -548,14 +626,21 @@ object ShortsReelsDetector {
 
     private fun isExplicitInstagramExit(root: AccessibilityNodeInfo): Boolean {
         val nodes = mutableListOf<AccessibilityNodeInfo>()
-        flattenNodes(root, nodes, maxNodes = 60)
+        flattenNodes(root, nodes, maxNodes = 100)
 
         for (node in nodes) {
             val desc = node.contentDescription?.toString()?.lowercase() ?: ""
             val resId = node.viewIdResourceName?.lowercase() ?: ""
-            if (resId.contains("feed_drawer") || desc.contains("messages") || desc.contains("direct")) {
-                return true
-            }
+            val text = node.text?.toString()?.lowercase() ?: ""
+
+            // Home / Feed tab selected
+            if ((desc.contains("home") || desc.contains("feed")) && (node.isSelected || desc.contains("selected"))) return true
+            // Messages / Direct
+            if (resId.contains("feed_drawer") || desc.contains("messages") || desc.contains("direct") || text == "messages") return true
+            // Profile tab selected
+            if (desc.contains("profile") && (node.isSelected || desc.contains("selected"))) return true
+            // Search / Explore tab selected
+            if (desc.contains("search") && (node.isSelected || desc.contains("selected"))) return true
         }
         return false
     }

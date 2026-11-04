@@ -1,5 +1,6 @@
 package com.studymode.app
 
+import android.accessibilityservice.AccessibilityService
 import android.content.Context
 import android.graphics.Color
 import android.graphics.PixelFormat
@@ -76,7 +77,9 @@ object FloatingScrollCounterOverlayManager {
             return
         }
 
-        if (!Settings.canDrawOverlays(context)) {
+        // TYPE_ACCESSIBILITY_OVERLAY does not require Settings.canDrawOverlays(context).
+        // Only require overlay permission if context is NOT an AccessibilityService.
+        if (context !is AccessibilityService && !Settings.canDrawOverlays(context)) {
             return
         }
 
@@ -132,8 +135,20 @@ object FloatingScrollCounterOverlayManager {
         }
 
         try {
-            val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-            val density = context.resources.displayMetrics.density
+            val (targetContext, windowType) = if (context is AccessibilityService) {
+                Pair(context, WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY)
+            } else {
+                val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                } else {
+                    @Suppress("DEPRECATION")
+                    WindowManager.LayoutParams.TYPE_PHONE
+                }
+                Pair(context.applicationContext ?: context, type)
+            }
+
+            val windowManager = targetContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+            val density = targetContext.resources.displayMetrics.density
 
             // Default position: top-left corner (14dp from left, 64dp from top)
             // Matches modern short-form UX and leaves right-side action buttons completely clear
@@ -143,14 +158,10 @@ object FloatingScrollCounterOverlayManager {
             val windowParams = WindowManager.LayoutParams(
                 WindowManager.LayoutParams.WRAP_CONTENT,
                 WindowManager.LayoutParams.WRAP_CONTENT,
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-                } else {
-                    @Suppress("DEPRECATION")
-                    WindowManager.LayoutParams.TYPE_PHONE
-                },
+                windowType,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                        WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                        WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
                 PixelFormat.TRANSLUCENT
             ).apply {
                 gravity = Gravity.TOP or Gravity.START
@@ -159,7 +170,7 @@ object FloatingScrollCounterOverlayManager {
             }
 
             // Outer Container Layout
-            val container = LinearLayout(context).apply {
+            val container = LinearLayout(targetContext).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 val padH = (12 * density).toInt()
@@ -177,7 +188,7 @@ object FloatingScrollCounterOverlayManager {
             }
 
             // Platform Icon
-            val iconView = ImageView(context).apply {
+            val iconView = ImageView(targetContext).apply {
                 val iconSize = (18 * density).toInt()
                 this.layoutParams = LinearLayout.LayoutParams(iconSize, iconSize).apply {
                     marginEnd = (7 * density).toInt()
@@ -194,7 +205,7 @@ object FloatingScrollCounterOverlayManager {
             container.addView(iconView)
 
             // Dual Stat Text: "12 Shorts • 3m"
-            val textView = TextView(context).apply {
+            val textView = TextView(targetContext).apply {
                 this.layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
@@ -245,7 +256,7 @@ object FloatingScrollCounterOverlayManager {
                                 val elapsedSec = if (sessionStartTimeMillis > 0L) ((System.currentTimeMillis() - sessionStartTimeMillis) / 1000).coerceAtLeast(0) else 0L
                                 val timeText = formatTime(elapsedSec)
                                 Toast.makeText(
-                                    context,
+                                    targetContext,
                                     "⚡ $sessionScrollCount short videos watched in $timeText.",
                                     Toast.LENGTH_SHORT
                                 ).show()
@@ -257,9 +268,24 @@ object FloatingScrollCounterOverlayManager {
                 }
             })
 
+            try {
+                windowManager.addView(container, windowParams)
+            } catch (e: Exception) {
+                android.util.Log.w("StudyMode", "Primary addView failed (${e.message}), trying applicationContext fallback")
+                val fallbackContext = context.applicationContext ?: context
+                val fallbackWm = fallbackContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+                windowParams.type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                } else {
+                    @Suppress("DEPRECATION")
+                    WindowManager.LayoutParams.TYPE_PHONE
+                }
+                fallbackWm.addView(container, windowParams)
+            }
+
             overlayView = container
-            windowManager.addView(container, windowParams)
             isShowing = true
+            android.util.Log.i("StudyMode", "FloatingScrollCounter: Displayed HUD for $platformName, count=$sessionScrollCount")
 
             // Start real-time ticker
             mainHandler.removeCallbacks(timeTickerRunnable)
@@ -267,7 +293,7 @@ object FloatingScrollCounterOverlayManager {
             mainHandler.postDelayed(timeTickerRunnable, 1000L)
 
         } catch (e: Exception) {
-            e.printStackTrace()
+            android.util.Log.e("StudyMode", "FloatingScrollCounter: Failed to show HUD", e)
             isShowing = false
             overlayView = null
         }
@@ -328,11 +354,19 @@ object FloatingScrollCounterOverlayManager {
         mainHandler.removeCallbacks(timeTickerRunnable)
         overlayView?.let { view ->
             try {
-                val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+                val wm = (if (context is AccessibilityService) context else (context.applicationContext ?: context))
+                    .getSystemService(Context.WINDOW_SERVICE) as WindowManager
                 if (view.isAttachedToWindow) {
-                    windowManager.removeView(view)
+                    wm.removeView(view)
                 }
-            } catch (_: Exception) {}
+            } catch (_: Exception) {
+                try {
+                    val appWm = context.applicationContext?.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+                    if (view.isAttachedToWindow) {
+                        appWm?.removeView(view)
+                    }
+                } catch (_: Exception) {}
+            }
         }
         overlayView = null
         isShowing = false

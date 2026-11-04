@@ -98,6 +98,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val preferences = getSharedPreferences("studymode", MODE_PRIVATE)
         val studyStore = LocalStudyStore(this)
+        val ytLimit = studyStore.appDailyLimit("com.google.android.youtube")
+        if (ytLimit != null && ytLimit.minutes == 15) {
+            studyStore.setAppDailyLimit("com.google.android.youtube", "YouTube", null)
+        }
         FocusTimerAlarms.restore(this)
         AppMonitorService.start(this)
         AppBlockingAccessibilityService.updateConfiguration(this)
