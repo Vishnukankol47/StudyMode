@@ -16,7 +16,13 @@ import android.content.pm.ServiceInfo
 import android.graphics.BitmapFactory
 import android.os.Build
 import android.os.IBinder
+import android.media.AudioAttributes
+import android.media.AudioManager
+import android.media.AudioPlaybackConfiguration
+import android.os.Handler
+import android.os.Looper
 import android.os.PowerManager
+import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CoroutineScope
@@ -56,6 +62,14 @@ class AppMonitorService : Service() {
     @Volatile private var lastNotificationText: String? = null
     @Volatile private var cachedUsageMap: Map<String, Long> = emptyMap()
     @Volatile private var lastUsageMapFetchMillis = 0L
+
+    // Zero-Accessibility Safe Mode (BrainPal Audio-Playback Technique)
+    private var audioPlaybackCallback: AudioManager.AudioPlaybackCallback? = null
+    private var isAudioCallbackRegistered = false
+    private var lastAudioReelTickMillis = 0L
+    private var lastPlayerInterfaceId: String? = null
+    private val piidRegex = Regex("""piid:(\d+)""")
+    private val muteRegex = Regex("""mutedState:([^\s]+)""")
 
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -141,6 +155,9 @@ class AppMonitorService : Service() {
             unregisterReceiver(screenReceiver)
         } catch (_: Exception) {}
 
+        unregisterFallbackAudioCallback()
+        FloatingScrollCounterOverlayManager.hide(this, resetSession = true)
+
         serviceJob.cancel()
         monitorJob?.cancel()
         monitorJob = null
@@ -155,14 +172,16 @@ class AppMonitorService : Service() {
         isScreenOn = false
         monitorJob?.cancel()
         monitorJob = null
+        unregisterFallbackAudioCallback()
+        FloatingScrollCounterOverlayManager.pause(this, isScreenOff = true)
     }
 
     private fun onScreenOn() {
-        if (!isScreenOn || monitorJob == null) {
-            isScreenOn = true
-            startMonitoring()
-            updateUsageNotification(currentTrackedPackage, LocalStudyStore(this))
-        }
+        isScreenOn = true
+        currentTrackedPackage = null
+        lastPlayerInterfaceId = null
+        startMonitoring()
+        updateUsageNotification(null, LocalStudyStore(this))
     }
 
     fun handleForegroundChanged(newPackage: String?) {
@@ -175,15 +194,139 @@ class AppMonitorService : Service() {
                 currentAppSessionStartMillis = 0L
                 updateUsageNotification(null, store)
             }
+            // If leaving short-video app and accessibility is off, pause floating badge
+            if (AppBlockingAccessibilityService.activeInstance == null) {
+                FloatingScrollCounterOverlayManager.pause(this, isScreenOff = false)
+                lastPlayerInterfaceId = null
+            }
             return
         }
 
-        if (currentTrackedPackage != newPackage) {
+        val platformName = getShortVideoPlatformName(newPackage)
+        val isShortVideoHost = platformName != null
+        val isPackageChanged = currentTrackedPackage != newPackage
+
+        if (isPackageChanged) {
             currentTrackedPackage = newPackage
             currentAppSessionStartMillis = now
             cachedUsageMap = todayAccurateUsageMap(this)
             lastUsageMapFetchMillis = now
             updateUsageNotification(newPackage, store)
+        }
+
+        // Zero-Accessibility Safe Mode: Stand by with AudioPlaybackCallback; do NOT pop up HUD on Home feed!
+        if (AppBlockingAccessibilityService.activeInstance == null) {
+            if (isShortVideoHost) {
+                if (!isAudioCallbackRegistered) {
+                    registerFallbackAudioCallback()
+                }
+            } else if (isPackageChanged) {
+                FloatingScrollCounterOverlayManager.pause(this, isScreenOff = false)
+                lastPlayerInterfaceId = null
+            }
+        }
+    }
+
+    private fun getShortVideoPlatformName(pkg: String?): String? = when (pkg) {
+        "com.google.android.youtube", "app.revanced.android.youtube", "app.rvx.android.youtube" -> "YouTube Shorts"
+        "com.instagram.android", "com.instagram.lite" -> "Instagram Reels"
+        "com.snapchat.android", "com.snap.android" -> "Snapchat Spotlight"
+        "com.zhiliaoapp.musically", "com.ss.android.ugc.trill" -> "TikTok"
+        "com.facebook.katana", "com.facebook.lite" -> "Facebook Reels"
+        else -> null
+    }
+
+    private fun registerFallbackAudioCallback() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || isAudioCallbackRegistered) return
+        val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+        try {
+            val callback = object : AudioManager.AudioPlaybackCallback() {
+                override fun onPlaybackConfigChanged(configs: MutableList<AudioPlaybackConfiguration>?) {
+                    super.onPlaybackConfigChanged(configs)
+                    onFallbackAudioPlaybackChanged(configs)
+                }
+            }
+            audioManager.registerAudioPlaybackCallback(callback, Handler(Looper.getMainLooper()))
+            audioPlaybackCallback = callback
+            isAudioCallbackRegistered = true
+            android.util.Log.d("StudyMode", "Zero-Accessibility Fallback: AudioPlaybackCallback registered")
+        } catch (e: Exception) {
+            android.util.Log.w("StudyMode", "Failed to register AudioPlaybackCallback", e)
+        }
+    }
+
+    private fun unregisterFallbackAudioCallback() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || !isAudioCallbackRegistered) return
+        val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+        try {
+            audioPlaybackCallback?.let { audioManager.unregisterAudioPlaybackCallback(it) }
+        } catch (_: Exception) {}
+        audioPlaybackCallback = null
+        isAudioCallbackRegistered = false
+        lastPlayerInterfaceId = null
+    }
+
+    private fun onFallbackAudioPlaybackChanged(configs: List<AudioPlaybackConfiguration>?) {
+        // If Accessibility is active, stand down (let Accessibility Service handle with full node inspection)
+        if (AppBlockingAccessibilityService.activeInstance != null) {
+            unregisterFallbackAudioCallback()
+            return
+        }
+        if (!isScreenOn) return
+        val currentPkg = currentTrackedPackage ?: return
+        val platformName = getShortVideoPlatformName(currentPkg) ?: return
+        if (configs.isNullOrEmpty()) return
+
+        val now = System.currentTimeMillis()
+        val store = LocalStudyStore(this)
+
+        for (config in configs) {
+            val usage = try { config.audioAttributes?.usage } catch (_: Exception) { null }
+            if (usage == AudioAttributes.USAGE_MEDIA) {
+                val raw = config.toString()
+                val piidMatch = piidRegex.find(raw)?.groupValues?.getOrNull(1)
+                val muteMatch = muteRegex.find(raw)?.groupValues?.getOrNull(1)
+
+                val isUnmuted = muteMatch == null || muteMatch.equals("none", ignoreCase = true)
+                if (piidMatch != null && isUnmuted && piidMatch != lastPlayerInterfaceId) {
+                    if (now - lastAudioReelTickMillis >= 1500L) {
+                        lastAudioReelTickMillis = now
+                        val isSwipe = lastPlayerInterfaceId != null
+                        lastPlayerInterfaceId = piidMatch
+
+                        if (isSwipe) {
+                            store.incrementTodayReelsScrolledCount()
+                        }
+                        android.util.Log.d("StudyMode", "Zero-Accessibility Fallback: Reel active in $platformName (piid: $piidMatch, isSwipe=$isSwipe)")
+
+                        if (store.isFloatingScrollCounterEnabled() && Settings.canDrawOverlays(this)) {
+                            FloatingScrollCounterOverlayManager.updateCounter(
+                                context = this,
+                                platformName = platformName,
+                                isScrollEvent = isSwipe,
+                                store = store,
+                                onLimitReached = {
+                                    ShortsBlockOverlayManager.show(this, "$platformName (Limit Reached)")
+                                }
+                            )
+                        }
+
+                        // Check if shorts micro-blocking is enabled for this platform
+                        val isMicroBlocked = store.isBlockShortsReelsEnabled() && when (currentPkg) {
+                            "com.google.android.youtube", "app.revanced.android.youtube", "app.rvx.android.youtube" -> store.isYouTubeShortsBlocked()
+                            "com.instagram.android", "com.instagram.lite" -> store.isInstagramReelsBlocked()
+                            "com.snapchat.android", "com.snap.android" -> store.isSnapchatSpotlightBlocked()
+                            "com.facebook.katana", "com.facebook.lite" -> store.isFacebookReelsBlocked()
+                            else -> true
+                        }
+
+                        if (isMicroBlocked) {
+                            ShortsBlockOverlayManager.show(this, platformName)
+                        }
+                        break
+                    }
+                }
+            }
         }
     }
 

@@ -41,8 +41,12 @@ object FloatingScrollCounterOverlayManager {
     private var isShowing: Boolean = false
 
     private val mainHandler = Handler(Looper.getMainLooper())
-    private var sessionScrollCount: Int = 0
-    private var sessionStartTimeMillis: Long = 0L
+    @Volatile private var sessionScrollCount: Int = 0
+    @Volatile private var sessionStartTimeMillis: Long = 0L
+    @Volatile private var pausedElapsedSeconds: Long = 0L
+    @Volatile private var pausedAtMillis: Long = 0L
+    @Volatile private var wasScreenOffPause: Boolean = false
+    @Volatile private var isPaused: Boolean = false
     private var lastScrollEventMillis: Long = 0L
     private var currentPlatform: String = ""
 
@@ -73,7 +77,7 @@ object FloatingScrollCounterOverlayManager {
         onLimitReached: (() -> Unit)? = null,
     ) {
         if (!store.isFloatingScrollCounterEnabled()) {
-            hide(context)
+            resetAndHide(context)
             return
         }
 
@@ -85,10 +89,10 @@ object FloatingScrollCounterOverlayManager {
 
         val now = System.currentTimeMillis()
 
-        // Debounce swipe events (min 380ms between reels)
+        // Debounce swipe events (min 1200ms between reels)
         var countIncremented = false
         if (isScrollEvent) {
-            if (now - lastScrollEventMillis > 380L) {
+            if (now - lastScrollEventMillis >= 1200L) {
                 lastScrollEventMillis = now
                 sessionScrollCount++
                 store.incrementTodayReelsScrolledCount()
@@ -98,13 +102,30 @@ object FloatingScrollCounterOverlayManager {
                 val limit = store.getShortsScrollLimit()
                 if (limit in 1..sessionScrollCount) {
                     onLimitReached?.invoke()
-                    hide(context)
+                    resetAndHide(context)
                     return
                 }
             }
         }
 
         mainHandler.post {
+            // Restore from pause: preserves session scroll count & resumes timer exactly where it left off
+            if (isPaused || pausedElapsedSeconds > 0L) {
+                val nowCurrent = System.currentTimeMillis()
+                // Expire only if user left to a completely different app for > 5 minutes AND not a screen off
+                if (!wasScreenOffPause && pausedAtMillis > 0L && (nowCurrent - pausedAtMillis > 5 * 60 * 1000L)) {
+                    sessionScrollCount = 0
+                    sessionStartTimeMillis = 0L
+                    pausedElapsedSeconds = 0L
+                } else if (pausedElapsedSeconds > 0L) {
+                    sessionStartTimeMillis = nowCurrent - (pausedElapsedSeconds * 1000L)
+                    pausedElapsedSeconds = 0L
+                }
+                isPaused = false
+                pausedAtMillis = 0L
+                wasScreenOffPause = false
+            }
+
             if (!isShowing || overlayView == null || currentPlatform != platformName) {
                 currentPlatform = platformName
                 if (!isShowing) {
@@ -314,6 +335,8 @@ object FloatingScrollCounterOverlayManager {
         } else {
             if (count == 1) "Reel" else "Reels"
         }
+        val iconRes = if (isYt) R.drawable.ic_short_video else R.drawable.ic_reel_video
+        iconImageView?.setImageResource(iconRes)
         countTextView?.text = "$count $unit • $timeText"
 
         // Dynamic Color: Green (1-5) -> Amber (6-15) -> Crimson Alert (16+)
@@ -341,12 +364,37 @@ object FloatingScrollCounterOverlayManager {
         }
     }
 
-    fun hide(context: Context) {
-        if (!isShowing && overlayView == null) return
+    fun pause(context: Context, isScreenOff: Boolean = false) {
+        mainHandler.post {
+            if (sessionStartTimeMillis > 0L) {
+                pausedElapsedSeconds = ((System.currentTimeMillis() - sessionStartTimeMillis) / 1000L).coerceAtLeast(1L)
+            }
+            isPaused = true
+            pausedAtMillis = System.currentTimeMillis()
+            if (isScreenOff) {
+                wasScreenOffPause = true
+            }
+            dismissInternal(context)
+        }
+    }
+
+    fun hide(context: Context, resetSession: Boolean = false) {
+        if (resetSession) {
+            resetAndHide(context)
+        } else {
+            pause(context, isScreenOff = false)
+        }
+    }
+
+    fun resetAndHide(context: Context) {
         mainHandler.post {
             dismissInternal(context)
             sessionScrollCount = 0
             sessionStartTimeMillis = 0L
+            pausedElapsedSeconds = 0L
+            pausedAtMillis = 0L
+            wasScreenOffPause = false
+            isPaused = false
         }
     }
 

@@ -6,7 +6,11 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
+import android.content.BroadcastReceiver
 import android.content.Intent
+import android.content.IntentFilter
+import android.os.Handler
+import android.os.Looper
 import android.content.pm.PackageManager
 import android.os.Build
 import android.view.accessibility.AccessibilityEvent
@@ -19,19 +23,66 @@ class AppBlockingAccessibilityService : AccessibilityService() {
     private var store: LocalStudyStore? = null
     private var lastBlockedPackage: String? = null
     private var lastBlockedAtMillis = 0L
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var screenReceiver: BroadcastReceiver? = null
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         activeInstance = this
         store = LocalStudyStore(this)
         updateTargetPackages()
+
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                when (intent?.action) {
+                    Intent.ACTION_SCREEN_OFF -> {
+                        FloatingScrollCounterOverlayManager.pause(this@AppBlockingAccessibilityService, isScreenOff = true)
+                    }
+                    Intent.ACTION_USER_PRESENT, Intent.ACTION_SCREEN_ON -> {
+                        mainHandler.postDelayed({
+                            try {
+                                val root = rootInActiveWindow
+                                val pkg = root?.packageName?.toString()
+                                if (pkg != null && (pkg == "com.instagram.android" ||
+                                        pkg == "com.google.android.youtube" ||
+                                        pkg == "com.snapchat.android" ||
+                                        pkg == "com.facebook.katana" ||
+                                        pkg.contains("youtube") ||
+                                        pkg.contains("instagram"))
+                                ) {
+                                    val s = store ?: LocalStudyStore(this@AppBlockingAccessibilityService)
+                                    ShortsReelsDetector.checkAndIntercept(this@AppBlockingAccessibilityService, null, s)
+                                }
+                            } catch (_: Exception) {}
+                        }, 350L)
+                    }
+                }
+            }
+        }
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_OFF)
+            addAction(Intent.ACTION_SCREEN_ON)
+            addAction(Intent.ACTION_USER_PRESENT)
+        }
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                registerReceiver(receiver, filter)
+            }
+            screenReceiver = receiver
+        } catch (_: Exception) {}
     }
 
     override fun onDestroy() {
         if (activeInstance === this) {
             activeInstance = null
         }
-        FloatingScrollCounterOverlayManager.hide(this)
+        try {
+            screenReceiver?.let { unregisterReceiver(it) }
+        } catch (_: Exception) {}
+        screenReceiver = null
+        FloatingScrollCounterOverlayManager.hide(this, resetSession = true)
         super.onDestroy()
     }
 
@@ -254,39 +305,53 @@ class AppBlockingAccessibilityService : AccessibilityService() {
     fun updateTargetPackages() {
         try {
             val info = serviceInfo ?: AccessibilityServiceInfo()
-            val pm = packageManager
+            val localStore = store ?: LocalStudyStore(this).also { store = it }
 
-            // Collect all installed launcher activities so we only monitor normal user apps
-            val launcherIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-            val launchableApps = try {
-                pm.queryIntentActivities(launcherIntent, PackageManager.MATCH_ALL)
-                    .mapNotNull { it.activityInfo?.packageName }
-                    .toSet()
-            } catch (_: Exception) {
-                emptySet()
+            // Strictly register ONLY:
+            // 1. The 6 core entertainment platforms (YouTube, Instagram, Snapchat, TikTok, Facebook) + StudyMode
+            val targetPackages = mutableSetOf(
+                // 1. YouTube
+                "com.google.android.youtube",
+                "app.revanced.android.youtube",
+                "app.rvx.android.youtube",
+                // 2. Instagram
+                "com.instagram.android",
+                "com.instagram.lite",
+                // 3. Snapchat
+                "com.snapchat.android",
+                "com.snap.android",
+                // 4. TikTok
+                "com.zhiliaoapp.musically",
+                "com.ss.android.ugc.trill",
+                // 5. Facebook
+                "com.facebook.katana",
+                "com.facebook.lite",
+                // 6. StudyMode itself
+                packageName
+            )
+
+            // 2. Plus ONLY the specific distracting apps user actively toggled ON in their blocklist
+            val userBlocked = try {
+                localStore.blockedApps().filter { it.blocked }.map { it.packageName }
+            } catch (_: Exception) { emptyList() }
+
+            val scheduledBlocked = try {
+                localStore.activeScheduleBlockedPackages()
+            } catch (_: Exception) { emptySet() }
+
+            val dailyLimited = try {
+                localStore.appDailyLimits().map { it.packageName }
+            } catch (_: Exception) { emptyList() }
+
+            (userBlocked + scheduledBlocked + dailyLimited).forEach { pkg ->
+                if (!isBankingOrUpiPackage(pkg)) {
+                    targetPackages.add(pkg)
+                }
             }
 
-            // Strictly filter out ALL banking, payment, and UPI packages
-            val safePackages = launchableApps.filterNot { isBankingOrUpiPackage(it) }.toMutableSet()
-
-            // Always ensure video/social short-form doom-scroll apps and StudyMode are included
-            safePackages.add("com.google.android.youtube")
-            safePackages.add("app.revanced.android.youtube")
-            safePackages.add("app.rvx.android.youtube")
-            safePackages.add("com.instagram.android")
-            safePackages.add("com.instagram.lite")
-            safePackages.add("com.snapchat.android")
-            safePackages.add("com.snap.android")
-            safePackages.add("com.facebook.katana")
-            safePackages.add("com.facebook.lite")
-            safePackages.add(packageName)
-
-            // If we have safe packages, assign them to packageNames.
-            // Android OS will NEVER dispatch events from any unlisted (banking) app to this service,
-            // and banking apps checking getEnabledAccessibilityServiceList will see they are not monitored.
-            if (safePackages.isNotEmpty()) {
-                info.packageNames = safePackages.toTypedArray()
-            }
+            // Android OS strictly limits accessibility event dispatch to only these packages.
+            // Banking & UPI apps are NEVER observed or dispatched, preventing false positive security warnings.
+            info.packageNames = targetPackages.toTypedArray()
 
             info.eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
                     AccessibilityEvent.TYPE_WINDOWS_CHANGED or
@@ -298,7 +363,7 @@ class AppBlockingAccessibilityService : AccessibilityService() {
                     AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
             info.notificationTimeout = 50
             serviceInfo = info
-            android.util.Log.d("StudyMode", "Accessibility serviceInfo set: ${safePackages.size} packages (banking strictly excluded)")
+            android.util.Log.d("StudyMode", "Accessibility serviceInfo set: ${targetPackages.size} packages (strictly entertainment + active user blocklist, zero banking/unselected apps)")
         } catch (e: Exception) {
             android.util.Log.w("StudyMode", "Failed to update packageNames on accessibility service", e)
         }

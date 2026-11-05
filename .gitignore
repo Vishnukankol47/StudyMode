@@ -49,3 +49,5 @@ list_methods.py
 read_axml.py
 temp_*.py
 fix_*.py
+
+brainpal_analysis/
