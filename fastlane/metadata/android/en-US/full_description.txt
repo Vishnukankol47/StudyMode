@@ -1,0 +1,9 @@
+StudyMode is a privacy-first, 100% on-device digital wellbeing and anti-doomscrolling companion for Android.
+
+Key Features:
+• Live Floating Shorts & Reels Counter: A discreet, draggable floating pill over YouTube Shorts and Instagram Reels that counts your swipes and live time spent.
+• Intentional Friction: Encourages mindful consumption without frustrating lockouts.
+• Zero-Tolerance Micro-Blockers: Option to block short-form video tabs instantly while keeping long-form study and tutorial content accessible.
+• Focus & Exam Timers: Pomodoro and deep work timers to protect your study sessions.
+• 100% On-Device & Privacy Guaranteed: Zero network permissions, zero tracking, zero telemetry, and zero ads.
+• Strict Banking & UPI Isolation: Automatically ignores banking and UPI payment apps to guarantee complete safety and privacy.

@@ -1,0 +1,5 @@
+• Fixed swipe counter accuracy on Instagram Reels.
+• Added persistent floating counter across screen lock / unlock.
+• Improved Home feed exit suppression.
+• Added dynamic platform icons for Shorts and Reels.
+• Refined Zero-Accessibility Safe Mode audio detection.
