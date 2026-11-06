@@ -573,6 +573,7 @@ private fun StudyModeHome(store: LocalStudyStore, requestedScheduleId: Long?) {
                 HomeTab.BLOCKS -> AppsAndUsageScreen(
                     store = store,
                     onDataChanged = { refreshKey += 1 },
+                    onBack = { selectedTabName = HomeTab.HOME.name },
                 )
                 HomeTab.SETTINGS -> SettingsScreen(
                     store = store,

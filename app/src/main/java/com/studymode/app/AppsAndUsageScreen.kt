@@ -52,6 +52,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -65,6 +66,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -102,6 +105,7 @@ private val shortFormFeatures = listOf(
 fun AppsAndUsageScreen(
     store: LocalStudyStore,
     onDataChanged: () -> Unit,
+    onBack: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     var refreshKey by rememberSaveable { mutableIntStateOf(0) }
@@ -190,738 +194,302 @@ fun AppsAndUsageScreen(
         }
     }
 
-    LazyColumn(
+    val frictionEnabled = remember(refreshKey) { store.isMindfulFrictionEnabled() }
+    val strictDelayEnabled = remember(refreshKey) { store.isStrictUnblockDelayEnabled() }
+
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 18.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+            .background(Color(0xFF090E0A))
     ) {
-        item {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 18.dp, bottom = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Blocks", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                    Text("Block distracting apps and stay focused.", color = AppsScreenMuted)
-                }
-                OutlinedButton(
-                    onClick = { showHelp = true },
-                    shape = RoundedCornerShape(20.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, AppsScreenDivider),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                ) {
-                    Text("💬  Help", fontSize = 13.sp)
-                }
-            }
-        }
-
-        item {
-            BankingCompatibilityStatusCard(
-                accessibilityEnabled = accessibilityEnabled,
-                onOpenAccessibility = { openAccessibilitySettings(context) },
-            )
-        }
-
-        item {
-            SectionHeading(
-                title = "App Limits",
-                subtitle = "Set daily time limits for specific apps.",
-                action = "+ Add App",
-                onAction = { pickerPurpose = AppPickerPurpose.LIMIT },
-            )
-        }
-        if (configuredLimitApps.isEmpty()) {
-            item {
-                EmptyCard(
-                    title = "No app limits yet",
-                    subtitle = "Tap here or + Add App to set daily usage limits.",
-                    onClick = { pickerPurpose = AppPickerPurpose.LIMIT },
+        // Subtle organic green glow in the upper-right corner
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            Color(0xFF143820).copy(alpha = 0.55f),
+                            Color(0xFF0E2516).copy(alpha = 0.2f),
+                            Color.Transparent,
+                        ),
+                        center = Offset(850f, -50f),
+                        radius = 800f,
+                    )
                 )
-            }
-        } else {
-            items(configuredLimitApps, key = { "limit:${it.packageName}" }) { app ->
-                val limit = dailyLimits[app.packageName] ?: return@items
-                AppLimitCard(
-                    app = app,
-                    limit = limit,
-                    usedMillis = usage[app.packageName],
-                    onEdit = { limitDialogApps = listOf(app) },
-                    onToggleBlocking = {
-                        store.setAppDailyLimit(
-                            app.packageName,
-                            app.label,
-                            limit.minutes,
-                            limit.warningPercent,
-                            !limit.blockingEnabled,
-                        )
-                        refreshData()
-                    },
-                    onBlockNow = {
-                        store.setAppBlocked(app.packageName, app.label, true)
-                        refreshData()
-                    },
-                    onRemove = {
-                        store.setAppDailyLimit(app.packageName, app.label, null)
-                        refreshData()
-                    },
-                )
-            }
-        }
+        )
 
-        item {
-            SectionHeading(
-                title = "App Blocks",
-                action = "+ Add",
-                onAction = { pickerPurpose = AppPickerPurpose.BLOCKLIST },
-            )
-        }
-        item {
-            InfoCard(
-                title = if (focusOnlyBlocking) "Focus-only blocking is on" else "Selected apps are blocked any time",
-                description = if (focusOnlyBlocking) {
-                    "Manual app blocks apply while a focus timer is running. Schedule-selected apps follow their schedule."
-                } else {
-                    "Manual app blocks apply whenever App Protection is enabled."
-                },
-            )
-        }
-        if (blockedLaunchableApps.isNotEmpty() && !overlayEnabled && !accessibilityEnabled) {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 18.dp),
+            contentPadding = PaddingValues(top = 10.dp, bottom = 100.dp),
+        ) {
+            // Header: Back Arrow + Blocks + Help Pill
             item {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    color = Color(0xFF281C10),
-                    border = BorderStroke(1.dp, Color(0xFF5E3C18)),
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp, bottom = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Column(
-                        modifier = Modifier.padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    IconButton(
+                        onClick = { onBack?.invoke() },
+                        modifier = Modifier.size(36.dp),
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("⚠️", fontSize = 16.sp)
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                "Display Permission Needed",
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFFFFB74D),
-                                fontSize = 14.sp,
-                            )
-                        }
                         Text(
-                            "To display the block screen when you open YouTube or other blocked apps, enable 'Display over other apps'. It works safely without triggering BHIM or banking alerts.",
-                            color = Color(0xFFDCC8B4),
-                            fontSize = 12.sp,
-                            lineHeight = 16.sp,
+                            text = "←",
+                            color = Color.White,
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Normal,
                         )
-                        Button(
-                            onClick = { openOverlaySettings(context) },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFFFFB74D),
-                                contentColor = Color(0xFF101312),
-                            ),
-                        ) {
-                            Text("Enable 'Display over other apps'", fontWeight = FontWeight.Bold)
-                        }
                     }
-                }
-            }
-        }
-        if (blockedLaunchableApps.isEmpty()) {
-            item {
-                EmptyCard(
-                    title = "No apps selected",
-                    subtitle = "Tap here or + Add to choose apps to block.",
-                    onClick = { pickerPurpose = AppPickerPurpose.BLOCKLIST },
-                )
-            }
-        } else {
-            items(blockedLaunchableApps, key = { "blocked:${it.packageName}" }) { app ->
-                BlockedAppCard(
-                    app = app,
-                    blocked = true,
-                    onCheckedChange = { enabled ->
-                        store.setAppBlocked(app.packageName, app.label, enabled)
-                        if (enabled && !overlayEnabled && !accessibilityEnabled) {
-                            showOverlayPermissionPrompt = true
-                        }
-                        refreshData()
-                    },
-                )
-            }
-        }
-
-        item {
-            val frictionEnabled = remember(refreshKey) { store.isMindfulFrictionEnabled() }
-            val defaultTab = remember(refreshKey) { store.mindfulFrictionDefaultTab() }
-            val pauseSeconds = remember(refreshKey) { store.mindfulFrictionPauseDurationSeconds() }
-            val targetBreaths = remember(refreshKey) { store.mindfulFrictionBreathsTarget() }
-
-            SectionHeading(
-                title = "Mindful Pre-Open Friction",
-                subtitle = "Intervene with a 10s reflection pause or deep breathing before opening restricted apps.",
-                action = "Test Preview",
-                onAction = {
-                    AppBlockOverlayManager.show(
-                        context = context,
-                        appLabel = "Sample App",
-                        reason = "Mindful Friction Preview",
-                        packageName = "com.google.android.youtube",
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = "Blocks",
+                        color = Color.White,
+                        fontSize = 26.sp,
+                        fontWeight = FontWeight.Bold,
                     )
-                },
-            )
-
-            MindfulFrictionCard(
-                enabled = frictionEnabled,
-                defaultTab = defaultTab,
-                pauseSeconds = pauseSeconds,
-                targetBreaths = targetBreaths,
-                onToggleEnabled = { enabled ->
-                    store.setMindfulFrictionEnabled(enabled)
-                    refreshData()
-                },
-                onSelectTab = { tab ->
-                    store.setMindfulFrictionDefaultTab(tab)
-                    refreshData()
-                },
-                onSelectPauseSeconds = { secs ->
-                    store.setMindfulFrictionPauseDurationSeconds(secs)
-                    refreshData()
-                },
-                onSelectBreaths = { breaths ->
-                    store.setMindfulFrictionBreathsTarget(breaths)
-                    refreshData()
-                },
-                onPreview = {
-                    AppBlockOverlayManager.show(
-                        context = context,
-                        appLabel = "Sample App",
-                        reason = "Mindful Friction Preview",
-                        packageName = "com.google.android.youtube",
-                    )
-                }
-            )
-        }
-
-        item {
-            SectionHeading(
-                title = "Strict Unblock Delay",
-                subtitle = "Require a 15–60s reflection cooldown before pausing or unblocking apps to break impulse loops.",
-            )
-            StrictUnblockSettingsCard(
-                store = store,
-                onSettingsChanged = { refreshData() }
-            )
-        }
-
-        item {
-            SectionHeading(
-                title = "Notification Silencer & Digest",
-                subtitle = "Batch and hold non-essential notifications during focus sessions, releasing them in a peaceful digest.",
-            )
-            NotificationBatchingSettingsCard(
-                store = store,
-                onSettingsChanged = { refreshData() }
-            )
-        }
-
-        item {
-            SectionHeading(
-                title = "Zen Mode • Deep Exam Lockout",
-                subtitle = "Strict full-device study lockdown. All distracting apps and feeds are locked out, allowing only emergency phone calls.",
-            )
-            ZenModeSettingsCard(
-                store = store,
-                refreshKey = refreshKey,
-                onSettingsChanged = { refreshData() },
-            )
-        }
-
-        item {
-            val shortsBlockedCount = remember(refreshKey) { store.todayShortsBlockedCount() }
-            val reelsScrolledToday = remember(refreshKey) { store.todayReelsScrolledCount() }
-            SectionHeading(
-                title = "Shorts & Reels Micro-Blocker",
-                subtitle = when {
-                    shortsBlockedCount > 0 && reelsScrolledToday > 0 ->
-                        "⚡ $reelsScrolledToday reels watched • $shortsBlockedCount attempts blocked today!"
-                    shortsBlockedCount > 0 ->
-                        "⚡ $shortsBlockedCount scrolling attempts blocked today! Search & study videos remain accessible."
-                    reelsScrolledToday > 0 ->
-                        "⚡ $reelsScrolledToday reels watched today with mindful floating HUD."
-                    else ->
-                        "Block doom-scrolling video feeds or display live floating counter while keeping study videos open."
-                },
-                action = "Preview",
-                onAction = { showShortsShowcase = true },
-            )
-        }
-        items(shortFormFeatures, key = { it.packageName }) { feature ->
-            val app = apps.find { it.packageName == feature.packageName }
-            val isAppFullyBlocked = blockedApps.containsKey(feature.packageName)
-            val isShortsBlocked = remember(refreshKey) {
-                when (feature.packageName) {
-                    "com.google.android.youtube" -> store.isYouTubeShortsBlocked()
-                    "com.instagram.android" -> store.isInstagramReelsBlocked()
-                    "com.snapchat.android" -> store.isSnapchatSpotlightBlocked()
-                    "com.facebook.katana" -> store.isFacebookReelsBlocked()
-                    else -> false
-                }
-            }
-            FeatureBlockCard(
-                feature = feature,
-                app = app,
-                isShortsBlocked = isShortsBlocked,
-                isAppFullyBlocked = isAppFullyBlocked,
-                accessibilityEnabled = accessibilityEnabled,
-                focusOnly = focusOnlyBlocking,
-                onToggle = { enabled ->
-                    when (feature.packageName) {
-                        "com.google.android.youtube" -> store.setYouTubeShortsBlocked(enabled)
-                        "com.instagram.android" -> store.setInstagramReelsBlocked(enabled)
-                        "com.snapchat.android" -> store.setSnapchatSpotlightBlocked(enabled)
-                        "com.facebook.katana" -> store.setFacebookReelsBlocked(enabled)
-                    }
-                    val anyBlocked = store.isYouTubeShortsBlocked() || store.isInstagramReelsBlocked() ||
-                            store.isSnapchatSpotlightBlocked() || store.isFacebookReelsBlocked()
-                    store.setBlockShortsReelsEnabled(anyBlocked)
-
-                    refreshData()
-                },
-                onBlockEntireApp = {
-                    val label = app?.label ?: feature.featureName
-                    store.setAppBlocked(feature.packageName, label, true)
-                    refreshData()
-                },
-                onEnableAccessibility = {
-                    showAccessibilitySetupDialog = true
-                },
-            )
-        }
-
-        item {
-            val floatingCounterEnabled = remember(refreshKey) { store.isFloatingScrollCounterEnabled() }
-            val currentScrollLimit = remember(refreshKey) { store.getShortsScrollLimit() }
-
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(18.dp),
-                color = AppsScreenPanel,
-                border = androidx.compose.foundation.BorderStroke(1.dp, AppsScreenDivider),
-            ) {
-                Column(
-                    modifier = Modifier.padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    Spacer(Modifier.weight(1f))
+                    Surface(
+                        onClick = { showHelp = true },
+                        shape = RoundedCornerShape(20.dp),
+                        color = Color(0xFF131915),
+                        border = BorderStroke(1.dp, Color(0xFF243528)),
                     ) {
-                        Surface(
-                            modifier = Modifier.size(40.dp),
-                            shape = CircleShape,
-                            color = AppsScreenGreenPanel,
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
                         ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Text("⏱️", fontSize = 18.sp)
-                            }
-                        }
-
-                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text("Live Floating Scroll Counter", fontWeight = FontWeight.SemiBold, color = Color.White)
-                                Surface(
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = Color(0xFF2C2210),
-                                    border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFFFFB74D).copy(alpha = 0.5f)),
-                                ) {
-                                    Text(
-                                        "Dual Stat",
-                                        color = Color(0xFFFFB74D),
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
-                                    )
-                                }
-                            }
+                            Text("💬", fontSize = 12.sp)
                             Text(
-                                "Draggable HUD over Reels & Shorts showing live swipe count + timer (e.g. 12 Reels • 3m)",
-                                color = if (floatingCounterEnabled) AppsScreenGreen else AppsScreenMuted,
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        }
-
-                        Switch(
-                            checked = floatingCounterEnabled,
-                            onCheckedChange = { enabled ->
-                                store.setFloatingScrollCounterEnabled(enabled)
-                                if (enabled && !overlayEnabled) {
-                                    showOverlayPermissionPrompt = true
-                                }
-                                refreshData()
-                            },
-                            colors = androidx.compose.material3.SwitchDefaults.colors(
-                                checkedThumbColor = Color.White,
-                                checkedTrackColor = AppsScreenGreen,
-                            ),
-                        )
-                    }
-
-                    if (false) {
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = Color(0xFF2C2210),
-                            border = androidx.compose.foundation.BorderStroke(0.8.dp, Color(0xFFFFB74D).copy(alpha = 0.6f)),
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                Text("⚠️", fontSize = 16.sp)
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        "Accessibility Service is OFF",
-                                        color = Color(0xFFFFB74D),
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 12.sp,
-                                    )
-                                    Text(
-                                        "Android requires Accessibility to detect Shorts & Reels and display the floating counter.",
-                                        color = Color(0xFFE2D6C0),
-                                        fontSize = 11.sp,
-                                    )
-                                }
-                                androidx.compose.material3.Button(
-                                    onClick = { showAccessibilitySetupDialog = true },
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = Color(0xFFFFB74D),
-                                        contentColor = Color(0xFF1F1A12),
-                                    ),
-                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                    shape = RoundedCornerShape(8.dp),
-                                ) {
-                                    Text("Turn On", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
-                    }
-
-                    if (floatingCounterEnabled && !overlayEnabled) {
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = Color(0xFF2C2210),
-                            border = androidx.compose.foundation.BorderStroke(0.8.dp, Color(0xFFFFB74D).copy(alpha = 0.6f)),
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                Text("🪟", fontSize = 16.sp)
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        "Appear on Top Required",
-                                        color = Color(0xFFFFB74D),
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 12.sp,
-                                    )
-                                    Text(
-                                        "Grant overlay permission so the floating counter pill can display over other apps.",
-                                        color = Color(0xFFE2D6C0),
-                                        fontSize = 11.sp,
-                                    )
-                                }
-                                androidx.compose.material3.Button(
-                                    onClick = { openOverlaySettings(context) },
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = Color(0xFFFFB74D),
-                                        contentColor = Color(0xFF1F1A12),
-                                    ),
-                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                    shape = RoundedCornerShape(8.dp),
-                                ) {
-                                    Text("Grant", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
-                    }
-
-                    if (floatingCounterEnabled) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 1.dp)
-                                .background(AppsScreenDivider)
-                        )
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text(
-                                "Scroll Session Limit:",
+                                text = "Help",
                                 color = Color.White,
-                                style = MaterialTheme.typography.bodySmall,
+                                fontSize = 13.sp,
                                 fontWeight = FontWeight.Medium,
                             )
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                listOf(
-                                    0 to "No Limit",
-                                    5 to "5 Reels",
-                                    10 to "10 Reels",
-                                    15 to "15 Reels",
-                                    25 to "25 Reels",
-                                ).forEach { (limit, label) ->
-                                    val selected = currentScrollLimit == limit
-                                    Surface(
-                                        shape = RoundedCornerShape(12.dp),
-                                        color = if (selected) AppsScreenGreenPanel else Color(0xFF222222),
-                                        border = androidx.compose.foundation.BorderStroke(
-                                            1.dp,
-                                            if (selected) AppsScreenGreen else AppsScreenDivider
-                                        ),
-                                        onClick = {
-                                            store.setShortsScrollLimit(limit)
-                                            refreshData()
-                                        },
-                                    ) {
-                                        Text(
-                                            label,
-                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                            color = if (selected) AppsScreenGreen else Color.LightGray,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                                        )
-                                    }
-                                }
-                            }
                         }
                     }
                 }
-            }
-        }
-
-        item {
-            SectionHeading(title = "Other Blocks", subtitle = "Block specific websites to stay focused.", action = null, onAction = null)
-        }
-        item {
-            WebsiteCard(
-                filterActive = filterActive,
-                filterSupported = filterSupported,
-                enabledRuleCount = domainRules.count { it.enabled },
-                onManage = { showWebsites = true },
-            )
-        }
-        if (!filterSupported) {
-            item {
                 Text(
-                    "Website filtering is unavailable on Android 9 so StudyMode can preserve that version's Private DNS behavior.",
-                    color = AppsScreenMuted,
-                    style = MaterialTheme.typography.bodySmall,
+                    text = "Block distracting apps and stay focused.",
+                    color = Color(0xFF8FA393),
+                    fontSize = 13.5.sp,
+                    modifier = Modifier.padding(start = 42.dp, bottom = 20.dp),
                 )
             }
-        }
-        vpnError?.let { error ->
-            item { Text(error, color = MaterialTheme.colorScheme.error) }
-        }
-        filterError?.let { error ->
-            item { Text(error, color = MaterialTheme.colorScheme.error) }
-        }
 
-        item {
-            SectionHeading(title = "Strict Mode Protections", subtitle = "Prevent workarounds and keep your focus intact.", action = null, onAction = null)
-        }
-        item {
-            StrictModeCard(
-                title = "Block selected apps only during focus",
-                description = "Manual app restrictions apply only while a focus timer is actively running.",
-                status = if (usageAccess || accessibilityEnabled) "Available" else "Setup required",
-                checked = focusOnlyBlocking,
-                onCheckedChange = {
-                    store.setFocusOnlyBlockingEnabled(it)
-                    refreshData()
-                },
-                setupLabel = if (usageAccess || accessibilityEnabled) null else "Enable app blocking",
-                onSetup = {
-                    if (!usageAccess) {
-                        usageSettings.launch(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
-                    } else {
-                        showAccessibilitySetupDialog = true
-                    }
-                },
-            )
-        }
-        item {
-            UnsupportedProtectionCard(
-                title = "Protect focus mode",
-                description = "Android does not let ordinary apps prevent their own uninstall or disablement. Turn on the Accessibility blocker to use app restrictions; you can always turn it off in Android settings.",
-            )
-        }
-        item {
-            UnsupportedProtectionCard(
-                title = "Split-screen protection",
-                description = "A regular app cannot globally disable Android split-screen mode. StudyMode does not claim to enforce this restriction.",
-            )
-        }
-        item {
-            UnsupportedProtectionCard(
-                title = "Floating-window protection",
-                description = "Android does not provide StudyMode a supported way to control other apps' floating windows. This option is unavailable.",
-            )
-        }
+            // SECTION 1: App Controls
+            item {
+                BlocksSectionHeader(
+                    iconRes = R.drawable.ic_blocks_grid,
+                    title = "App Controls",
+                )
+            }
 
-        item {
-            if (!notificationsEnabled) {
-                PermissionCard(
-                    title = "Limit notifications",
-                    enabled = false,
-                    description = "Optional. Enables warning and daily-limit notifications when the app-blocking service detects the threshold. App restrictions can still work without notifications.",
-                    buttonLabel = "Enable notifications",
-                    onClick = {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                            notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-                        } else {
-                            context.startActivity(
-                                Intent(
-                                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                                    android.net.Uri.parse("package:${context.packageName}"),
-                                ),
+            item {
+                BlocksSettingRow(
+                    iconRes = R.drawable.ic_blocks_hourglass,
+                    title = "App Limits",
+                    subtitle = "Set daily time limits for specific apps.",
+                    onClick = { pickerPurpose = AppPickerPurpose.LIMIT },
+                    trailingContent = {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(2.dp),
+                        ) {
+                            Text(
+                                text = "+ Add App",
+                                color = Color(0xFF4ADE80),
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                text = " >",
+                                color = Color(0xFF4ADE80),
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
                             )
                         }
                     },
                 )
             }
-        }
-        item {
-            PermissionCard(
-                title = "Usage access",
-                enabled = usageAccess,
-                description = if (usageAccess) {
-                    "Shows today's app usage and enables background focus enforcement and daily limits. Data stays on-device."
-                } else {
-                    "Required to measure app usage and block distracting apps. Data stays completely on-device."
-                },
-                buttonLabel = if (usageAccess) "Manage Usage Access" else "Open Usage Access settings",
-                onClick = { usageSettings.launch(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) },
-            )
-        }
-        item {
-            PermissionCard(
-                title = "Display over other apps",
-                enabled = overlayEnabled,
-                description = if (overlayEnabled) {
-                    "Enables instant blocking screen over restricted apps. 100% compatible with BHIM, Google Pay, and banking apps."
-                } else {
-                    "Recommended for UPI-safe app blocking without triggering BHIM or banking accessibility alerts."
-                },
-                buttonLabel = if (overlayEnabled) "Manage Overlay settings" else "Enable Overlay permission",
-                onClick = {
-                    openOverlaySettings(context)
-                },
-            )
-        }
-        if (false) { item {
-            PermissionCard(
-                title = "Accessibility blocker (Optional)",
-                enabled = accessibilityEnabled,
-                description = if (accessibilityEnabled) {
-                    "Active. Window content inspection is disabled and banking apps are excluded. If BHIM or bank apps show security alerts, keep this OFF."
-                } else {
-                    "Optional. Standard blocking works safely via Usage Access & Overlay without triggering UPI security warnings."
-                },
-                buttonLabel = if (accessibilityEnabled) "Manage Accessibility settings" else "Setup Accessibility (Optional)",
-                onClick = {
-                    if (accessibilityEnabled) {
-                        openAccessibilitySettings(context)
-                    } else {
-                        showAccessibilitySetupDialog = true
-                    }
-                },
-            )
-        } }
 
-        item {
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                color = AppsScreenPanel,
-                border = androidx.compose.foundation.BorderStroke(1.dp, AppsScreenDivider),
-            ) {
-                Column(
-                    modifier = Modifier.padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    Text("Quick control", fontWeight = FontWeight.SemiBold)
-                    if (pausedUntil > System.currentTimeMillis()) {
+            item {
+                BlocksSettingRow(
+                    iconRes = R.drawable.ic_blocks_prohibited,
+                    title = "App Blocks",
+                    subtitle = "Block selected apps any time.",
+                    onClick = { pickerPurpose = AppPickerPurpose.BLOCKLIST },
+                    trailingContent = {
                         Text(
-                            "Selected app blocks are paused until ${java.text.DateFormat.getTimeInstance().format(Date(pausedUntil))}.",
-                            color = AppsScreenMuted,
+                            text = ">",
+                            color = Color(0xFF9CA3AF),
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold,
                         )
-                        TextButton(
-                            onClick = {
-                                store.resumeBlockingNow()
-                                refreshData()
-                            },
-                        ) { Text("Resume blocking", color = AppsScreenGreen) }
-                    } else {
-                        Text("Pause selected app blocks for five minutes.", color = AppsScreenMuted)
-                        OutlinedButton(
-                            onClick = {
-                                if (store.isStrictUnblockDelayEnabled()) {
-                                    showStrictDelayDialog = true
-                                    return@OutlinedButton
-                                }
-                                store.pauseBlockingForFiveMinutes()
-                                refreshData()
-                            },
-                        ) { Text("Pause for 5 minutes") }
-                    }
-                }
+                    },
+                )
             }
-        }
 
-        item {
-            SectionHeading(
-                title = "Today's usage",
-                action = if (usageAccess) "Refresh" else null,
-                onAction = if (usageAccess) {
-                    { refreshData() }
-                } else {
-                    null
-                },
-            )
-        }
-        if (!usageAccess) {
             item {
-                Text("Grant Usage Access above to view today's locally measured app totals.", color = AppsScreenMuted)
+                BlocksSettingRow(
+                    iconRes = R.drawable.ic_blocks_lungs,
+                    title = "Mindful Pre-Open Friction",
+                    subtitle = "Add a short pause or breathing exercise before opening restricted apps.",
+                    onClick = {
+                        val next = !frictionEnabled
+                        store.setMindfulFrictionEnabled(next)
+                        refreshData()
+                    },
+                    trailingContent = {
+                        Switch(
+                            checked = frictionEnabled,
+                            onCheckedChange = { enabled ->
+                                store.setMindfulFrictionEnabled(enabled)
+                                refreshData()
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = Color(0xFF22C55E),
+                                uncheckedThumbColor = Color(0xFF9EABA1),
+                                uncheckedTrackColor = Color(0xFF2B362E),
+                                checkedBorderColor = Color.Transparent,
+                                uncheckedBorderColor = Color.Transparent,
+                            ),
+                        )
+                    },
+                )
             }
-        } else if (usage.isEmpty()) {
+
             item {
-                Text("No app usage totals are available yet today.", color = AppsScreenMuted)
+                BlocksSettingRow(
+                    iconRes = R.drawable.ic_blocks_shield_lock,
+                    title = "Strict Unlock Delay",
+                    subtitle = "Require a 15–60s cooldown before pausing or unblocking apps.",
+                    onClick = {
+                        val next = !strictDelayEnabled
+                        store.setStrictUnblockDelayEnabled(next)
+                        refreshData()
+                    },
+                    trailingContent = {
+                        Switch(
+                            checked = strictDelayEnabled,
+                            onCheckedChange = { enabled ->
+                                store.setStrictUnblockDelayEnabled(enabled)
+                                refreshData()
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = Color(0xFF22C55E),
+                                uncheckedThumbColor = Color(0xFF9EABA1),
+                                uncheckedTrackColor = Color(0xFF2B362E),
+                                checkedBorderColor = Color.Transparent,
+                                uncheckedBorderColor = Color.Transparent,
+                            ),
+                        )
+                    },
+                )
             }
-        } else {
-            items(
-                usage.entries.sortedByDescending { it.value }.take(20),
-                key = { "usage:${it.key}" },
-            ) { entry ->
-                val app = apps.find { it.packageName == entry.key }
-                UsageCard(
-                    label = app?.label ?: entry.key,
-                    duration = formatUsageDuration(entry.value),
+
+            // Divider 1
+            item {
+                HorizontalDivider(
+                    color = Color(0xFF18231C),
+                    thickness = 1.dp,
+                    modifier = Modifier.padding(vertical = 10.dp),
+                )
+            }
+
+            // SECTION 2: Web & Content
+            item {
+                BlocksSectionHeader(
+                    iconRes = R.drawable.ic_blocks_globe,
+                    title = "Web & Content",
+                )
+            }
+
+            item {
+                BlocksSettingRow(
+                    iconRes = R.drawable.ic_blocks_globe,
+                    title = "Block Websites",
+                    subtitle = "Manage domains and local VPN filtering.",
+                    onClick = { showWebsites = true },
+                    trailingContent = {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(2.dp),
+                        ) {
+                            Text(
+                                text = "Manage",
+                                color = Color(0xFF4ADE80),
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                text = " >",
+                                color = Color(0xFF4ADE80),
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                    },
+                )
+            }
+
+            item {
+                BlocksSettingRow(
+                    iconRes = R.drawable.ic_blocks_clapperboard,
+                    title = "Reel/Shorts Analysis",
+                    subtitle = "Track and analyze your short-form video usage (reels, shorts, etc.) with insights and trends.",
+                    onClick = { showShortsShowcase = true },
+                    trailingContent = {
+                        Text(
+                            text = ">",
+                            color = Color(0xFF9CA3AF),
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    },
+                )
+            }
+
+            // Divider 2
+            item {
+                HorizontalDivider(
+                    color = Color(0xFF18231C),
+                    thickness = 1.dp,
+                    modifier = Modifier.padding(vertical = 10.dp),
+                )
+            }
+
+            // SECTION 3: Access & Permissions
+            item {
+                BlocksSectionHeader(
+                    iconRes = R.drawable.ic_blocks_gear,
+                    title = "Access & Permissions",
+                )
+            }
+
+            item {
+                BlocksSettingRow(
+                    iconRes = R.drawable.ic_blocks_gear,
+                    title = "App Permissions",
+                    subtitle = "Manage required permissions for blocking, tracking, and overlays.",
+                    onClick = { showOverlayPermissionPrompt = true },
+                    trailingContent = {
+                        Text(
+                            text = ">",
+                            color = Color(0xFF9CA3AF),
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    },
                 )
             }
         }
-        item { Spacer(Modifier.size(16.dp)) }
     }
 
     val selectableApps = remember(apps) {
@@ -2619,5 +2187,74 @@ private fun BankingCompatibilityStatusCard(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun BlocksSectionHeader(
+    iconRes: Int,
+    title: String,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp, bottom = 6.dp, start = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Image(
+            painter = painterResource(iconRes),
+            contentDescription = null,
+            modifier = Modifier.size(19.dp),
+        )
+        Text(
+            text = title,
+            color = Color.White,
+            fontSize = 17.sp,
+            fontWeight = FontWeight.Bold,
+        )
+    }
+}
+
+@Composable
+private fun BlocksSettingRow(
+    iconRes: Int,
+    title: String,
+    subtitle: String,
+    onClick: (() -> Unit)? = null,
+    trailingContent: @Composable () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(vertical = 12.dp, horizontal = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Image(
+            painter = painterResource(iconRes),
+            contentDescription = null,
+            modifier = Modifier.size(24.dp),
+        )
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text(
+                text = title,
+                color = Color.White,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = subtitle,
+                color = Color(0xFF8FA393),
+                fontSize = 12.5.sp,
+                lineHeight = 16.sp,
+            )
+        }
+        trailingContent()
     }
 }
