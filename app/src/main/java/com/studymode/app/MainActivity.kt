@@ -327,6 +327,7 @@ private enum class HomeTab(val label: String, val icon: String) {
     SETTINGS("Settings", ""),
     USAGE_STATS("Usage Stats", ""),
     FOCUS_ANALYSIS("Focus Analysis", ""),
+    REEL_SHORTS_ANALYSIS("Reel/Shorts Analysis", ""),
 }
 
 private val navigationTabs = listOf(
@@ -574,6 +575,14 @@ private fun StudyModeHome(store: LocalStudyStore, requestedScheduleId: Long?) {
                     store = store,
                     onDataChanged = { refreshKey += 1 },
                     onBack = { selectedTabName = HomeTab.HOME.name },
+                    onOpenReelsAnalysis = { selectedTabName = HomeTab.REEL_SHORTS_ANALYSIS.name },
+                )
+                HomeTab.REEL_SHORTS_ANALYSIS -> ReelShortsAnalysisScreen(
+                    store = store,
+                    onBack = { selectedTabName = HomeTab.BLOCKS.name },
+                    onSetDailyLimit = {
+                        selectedTabName = HomeTab.BLOCKS.name
+                    },
                 )
                 HomeTab.SETTINGS -> SettingsScreen(
                     store = store,

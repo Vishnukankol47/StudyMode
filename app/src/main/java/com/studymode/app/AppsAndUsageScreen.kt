@@ -106,6 +106,7 @@ fun AppsAndUsageScreen(
     store: LocalStudyStore,
     onDataChanged: () -> Unit,
     onBack: (() -> Unit)? = null,
+    onOpenReelsAnalysis: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     var refreshKey by rememberSaveable { mutableIntStateOf(0) }
@@ -113,6 +114,7 @@ fun AppsAndUsageScreen(
     var pickerPurpose by remember { mutableStateOf<AppPickerPurpose?>(null) }
     var limitDialogApps by remember { mutableStateOf<List<LaunchableApp>?>(null) }
     var showShortsShowcase by rememberSaveable { mutableStateOf(false) }
+    var showReelsAnalysisInternal by rememberSaveable { mutableStateOf(false) }
     var showHelp by rememberSaveable { mutableStateOf(false) }
     var showStrictDelayDialog by rememberSaveable { mutableStateOf(false) }
     var showAccessibilitySetupDialog by rememberSaveable { mutableStateOf(false) }
@@ -196,6 +198,30 @@ fun AppsAndUsageScreen(
 
     val frictionEnabled = remember(refreshKey) { store.isMindfulFrictionEnabled() }
     val strictDelayEnabled = remember(refreshKey) { store.isStrictUnblockDelayEnabled() }
+
+    if (showReelsAnalysisInternal) {
+        ReelShortsAnalysisScreen(
+            store = store,
+            onBack = { showReelsAnalysisInternal = false },
+            onSetDailyLimit = {
+                val shortApps = apps.filter { it.packageName in setOf(
+                    "com.google.android.youtube",
+                    "com.instagram.android",
+                    "com.instagram.lite",
+                    "com.facebook.katana",
+                    "com.facebook.lite",
+                    "com.snapchat.android"
+                )}
+                if (shortApps.isNotEmpty()) {
+                    limitDialogApps = shortApps
+                } else {
+                    pickerPurpose = AppPickerPurpose.LIMIT
+                }
+                showReelsAnalysisInternal = false
+            },
+        )
+        return
+    }
 
     Box(
         modifier = Modifier
@@ -444,7 +470,13 @@ fun AppsAndUsageScreen(
                     iconRes = R.drawable.ic_blocks_clapperboard,
                     title = "Reel/Shorts Analysis",
                     subtitle = "Track and analyze your short-form video usage (reels, shorts, etc.) with insights and trends.",
-                    onClick = { showShortsShowcase = true },
+                    onClick = {
+                        if (onOpenReelsAnalysis != null) {
+                            onOpenReelsAnalysis()
+                        } else {
+                            showReelsAnalysisInternal = true
+                        }
+                    },
                     trailingContent = {
                         Text(
                             text = ">",
