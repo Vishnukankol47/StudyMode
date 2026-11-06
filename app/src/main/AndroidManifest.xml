@@ -59,18 +59,6 @@
             </intent-filter>
         </activity>
         <service
-            android:name=".AppBlockingAccessibilityService"
-            android:exported="true"
-            android:label="@string/accessibility_service_label"
-            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
-            <intent-filter>
-                <action android:name="android.accessibilityservice.AccessibilityService" />
-            </intent-filter>
-            <meta-data
-                android:name="android.accessibilityservice"
-                android:resource="@xml/accessibility_service_config" />
-        </service>
-        <service
             android:name=".AppMonitorService"
             android:exported="false"
             android:foregroundServiceType="specialUse">

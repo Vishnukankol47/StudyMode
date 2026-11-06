@@ -155,7 +155,6 @@ fun AppsAndUsageScreen(
     fun refreshData() {
         refreshKey += 1
         apps = installedLaunchableApps(context)
-        AppBlockingAccessibilityService.updateConfiguration(context)
         if (hasUsageAccess(context)) {
             AppMonitorService.start(context)
         }
@@ -491,9 +490,7 @@ fun AppsAndUsageScreen(
                     val anyBlocked = store.isYouTubeShortsBlocked() || store.isInstagramReelsBlocked() ||
                             store.isSnapchatSpotlightBlocked() || store.isFacebookReelsBlocked()
                     store.setBlockShortsReelsEnabled(anyBlocked)
-                    if (enabled && !accessibilityEnabled) {
-                        showAccessibilitySetupDialog = true
-                    }
+
                     refreshData()
                 },
                 onBlockEntireApp = {
@@ -564,9 +561,7 @@ fun AppsAndUsageScreen(
                             checked = floatingCounterEnabled,
                             onCheckedChange = { enabled ->
                                 store.setFloatingScrollCounterEnabled(enabled)
-                                if (enabled && !accessibilityEnabled) {
-                                    showAccessibilitySetupDialog = true
-                                } else if (enabled && !overlayEnabled) {
+                                if (enabled && !overlayEnabled) {
                                     showOverlayPermissionPrompt = true
                                 }
                                 refreshData()
@@ -578,7 +573,7 @@ fun AppsAndUsageScreen(
                         )
                     }
 
-                    if (floatingCounterEnabled && !accessibilityEnabled) {
+                    if (false) {
                         Surface(
                             shape = RoundedCornerShape(10.dp),
                             color = Color(0xFF2C2210),
@@ -835,7 +830,7 @@ fun AppsAndUsageScreen(
                 },
             )
         }
-        item {
+        if (false) { item {
             PermissionCard(
                 title = "Accessibility blocker (Optional)",
                 enabled = accessibilityEnabled,
@@ -853,7 +848,7 @@ fun AppsAndUsageScreen(
                     }
                 },
             )
-        }
+        } }
 
         item {
             Surface(
@@ -1432,15 +1427,15 @@ private fun FeatureBlockCard(
                         if (isShortsBlocked && !isAppFullyBlocked) {
                             Surface(
                                 shape = RoundedCornerShape(6.dp),
-                                color = if (accessibilityEnabled) AppsScreenGreenPanel else Color(0xFF382613),
+                                color = AppsScreenGreenPanel,
                                 border = androidx.compose.foundation.BorderStroke(
                                     0.5.dp,
-                                    if (accessibilityEnabled) AppsScreenGreen.copy(alpha = 0.4f) else Color(0xFFFFB74D).copy(alpha = 0.4f),
+                                    AppsScreenGreen.copy(alpha = 0.4f),
                                 ),
                             ) {
                                 Text(
-                                    if (accessibilityEnabled) "Micro-block" else "Needs Accessibility",
-                                    color = if (accessibilityEnabled) AppsScreenGreen else Color(0xFFFFB74D),
+                                    "Micro-block",
+                                    color = AppsScreenGreen,
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
                                     maxLines = 1,
@@ -1454,14 +1449,14 @@ private fun FeatureBlockCard(
                     Text(
                         when {
                             isAppFullyBlocked -> "Entire ${feature.featureName} app is blocked (100% UPI safe)"
-                            isShortsBlocked && !accessibilityEnabled -> "Needs Accessibility to filter in-app tabs • Or block entire app to keep BHIM safe"
+                            isShortsBlocked && false -> ""
                             isShortsBlocked -> "Doom-scrolling video feed blocked • Study videos & chats open"
                             app == null -> "Install ${feature.featureName} to block feeds"
                             else -> "Allowed (No distraction blocking active)"
                         },
                         color = when {
                             isAppFullyBlocked -> Color(0xFFFFB74D)
-                            isShortsBlocked && !accessibilityEnabled -> Color(0xFFFFB74D)
+                            isShortsBlocked && false -> Color(0xFFFFB74D)
                             isShortsBlocked -> AppsScreenGreen
                             else -> AppsScreenMuted
                         },
@@ -1480,7 +1475,7 @@ private fun FeatureBlockCard(
                 )
             }
 
-            if (isShortsBlocked && !isAppFullyBlocked && !accessibilityEnabled) {
+            if (false) {
                 Surface(
                     shape = RoundedCornerShape(10.dp),
                     color = Color(0xFF1E1810),

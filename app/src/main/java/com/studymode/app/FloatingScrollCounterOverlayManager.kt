@@ -1,6 +1,5 @@
 package com.studymode.app
 
-import android.accessibilityservice.AccessibilityService
 import android.content.Context
 import android.graphics.Color
 import android.graphics.PixelFormat
@@ -124,16 +123,8 @@ object FloatingScrollCounterOverlayManager {
             return
         }
 
-        // TYPE_ACCESSIBILITY_OVERLAY does not require Settings.canDrawOverlays(context).
-        // Only require overlay permission if context is NOT an AccessibilityService.
-        if (context !is AccessibilityService) {
-            // When Accessibility is active, let AccessibilityService manage the HUD exclusively
-            if (AppBlockingAccessibilityService.activeInstance != null) {
-                return
-            }
-            if (!Settings.canDrawOverlays(context)) {
-                return
-            }
+        if (!Settings.canDrawOverlays(context)) {
+            return
         }
 
         currentStore = store
@@ -194,16 +185,12 @@ object FloatingScrollCounterOverlayManager {
         dismissInternal(context)
 
         try {
-            val (targetContext, windowType) = if (context is AccessibilityService) {
-                Pair(context, WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY)
+            val targetContext = context.applicationContext ?: context
+            val windowType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
             } else {
-                val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-                } else {
-                    @Suppress("DEPRECATION")
-                    WindowManager.LayoutParams.TYPE_PHONE
-                }
-                Pair(context.applicationContext ?: context, type)
+                @Suppress("DEPRECATION")
+                WindowManager.LayoutParams.TYPE_PHONE
             }
 
             val windowManager = targetContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -450,7 +437,7 @@ object FloatingScrollCounterOverlayManager {
         mainHandler.removeCallbacks(timeTickerRunnable)
         overlayView?.let { view ->
             try {
-                val wm = (if (context is AccessibilityService) context else (context.applicationContext ?: context))
+                val wm = (context.applicationContext ?: context)
                     .getSystemService(Context.WINDOW_SERVICE) as WindowManager
                 wm.removeViewImmediate(view)
             } catch (_: Exception) {

@@ -1335,7 +1335,7 @@ private fun SleepHelpDialog(onDismiss: () -> Unit) {
                 Text("• Manual Sleep Logging: Log your actual bedtime and wake-up times to track consistency. You can also rate sleep quality (1–5) and add optional study/sleep notes.", fontSize = 13.sp)
                 Text("• Phone Usage Measurement: When Usage Access is granted, StudyMode measures foreground app usage during your planned sleep window.", fontSize = 13.sp)
                 Text("• Neutral & Honest: Phone activity is not proof of wakefulness (e.g. streaming, podcasts, alarms). StudyMode never shames you or marks your logs false.", fontSize = 13.sp)
-                Text("• Sleep Protection: Automatically blocks selected apps using the Accessibility service during your active sleep hours.", fontSize = 13.sp)
+                Text("• Sleep Protection: Automatically blocks selected apps during your active sleep hours.", fontSize = 13.sp)
                 Text("• Sleep Reminders: Gentle local notifications remind you 15 minutes before bedtime to wind down and prepare for rest.", fontSize = 13.sp)
                 Text("• 100% Offline & Private: All sleep data remains securely on your device. No cloud sync, no tracking.", fontSize = 13.sp, color = SleepGreen)
             }

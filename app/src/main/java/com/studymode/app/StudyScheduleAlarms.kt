@@ -178,6 +178,5 @@ class ScheduleAlarmRestoreReceiver : BroadcastReceiver() {
         if (hasUsageAccess(context)) {
             AppMonitorService.start(context)
         }
-        AppBlockingAccessibilityService.updateConfiguration(context)
-    }
+            }
 }

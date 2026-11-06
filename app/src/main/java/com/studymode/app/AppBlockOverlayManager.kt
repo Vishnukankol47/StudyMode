@@ -56,11 +56,8 @@ object AppBlockOverlayManager {
         packageName: String,
     ) {
         val hasOverlayPermission = Settings.canDrawOverlays(context)
-        val accessibilityService = AppBlockingAccessibilityService.activeInstance
-
-        val canShowOverlay = hasOverlayPermission || accessibilityService != null
-        if (!canShowOverlay) {
-            android.util.Log.w("StudyMode", "AppBlockOverlayManager: neither overlay nor accessibility available, falling back to Activity")
+        if (!hasOverlayPermission) {
+            android.util.Log.w("StudyMode", "AppBlockOverlayManager: overlay permission not available, falling back to Activity")
             try {
                 AppBlockedActivity.start(context, appLabel, reason, packageName)
             } catch (e: Exception) {
@@ -76,22 +73,12 @@ object AppBlockOverlayManager {
 
         mainHandler.post {
             try {
-                val (targetContext, layoutType) = when {
-                    hasOverlayPermission -> {
-                        val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-                        } else {
-                            @Suppress("DEPRECATION")
-                            WindowManager.LayoutParams.TYPE_PHONE
-                        }
-                        Pair(context.applicationContext, type)
-                    }
-                    accessibilityService != null -> {
-                        Pair(accessibilityService, WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY)
-                    }
-                    else -> {
-                        Pair(context.applicationContext, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
-                    }
+                val targetContext = context.applicationContext
+                val layoutType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                } else {
+                    @Suppress("DEPRECATION")
+                    WindowManager.LayoutParams.TYPE_PHONE
                 }
 
                 val windowManager = targetContext.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
@@ -120,24 +107,11 @@ object AppBlockOverlayManager {
                         store = store,
                         onCloseApp = {
                             dismiss(targetContext)
-                            val service = AppBlockingAccessibilityService.activeInstance
-                            if (service != null) {
-                                try {
-                                    service.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_HOME)
-                                } catch (_: Exception) {
-                                    val homeIntent = Intent(Intent.ACTION_MAIN).apply {
-                                        addCategory(Intent.CATEGORY_HOME)
-                                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
-                                    }
-                                    targetContext.startActivity(homeIntent)
-                                }
-                            } else {
-                                val homeIntent = Intent(Intent.ACTION_MAIN).apply {
-                                    addCategory(Intent.CATEGORY_HOME)
-                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
-                                }
-                                targetContext.startActivity(homeIntent)
+                            val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+                                addCategory(Intent.CATEGORY_HOME)
+                                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
                             }
+                            targetContext.startActivity(homeIntent)
                         },
                         onUnlockMinutes = { minutes ->
                             val now = System.currentTimeMillis()
@@ -216,24 +190,11 @@ object AppBlockOverlayManager {
                     btnClose?.text = "Close $appLabel"
                     btnClose?.setOnClickListener {
                         dismiss(targetContext)
-                        val service = AppBlockingAccessibilityService.activeInstance
-                        if (service != null) {
-                            try {
-                                service.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_HOME)
-                            } catch (_: Exception) {
-                                val homeIntent = Intent(Intent.ACTION_MAIN).apply {
-                                    addCategory(Intent.CATEGORY_HOME)
-                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
-                                }
-                                targetContext.startActivity(homeIntent)
-                            }
-                        } else {
-                            val homeIntent = Intent(Intent.ACTION_MAIN).apply {
-                                addCategory(Intent.CATEGORY_HOME)
-                                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
-                            }
-                            targetContext.startActivity(homeIntent)
+                        val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+                            addCategory(Intent.CATEGORY_HOME)
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
                         }
+                        targetContext.startActivity(homeIntent)
                     }
 
                     // 5. Manage / Turn Off button
@@ -303,7 +264,7 @@ object AppBlockOverlayManager {
     }
 
     fun dismiss(context: Context) {
-        val targetContext = AppBlockingAccessibilityService.activeInstance ?: context.applicationContext
+        val targetContext = context.applicationContext
         mainHandler.post {
             try {
                 val windowManager = targetContext.getSystemService(Context.WINDOW_SERVICE) as? WindowManager

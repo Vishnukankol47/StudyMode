@@ -1,6 +1,5 @@
 package com.studymode.app
 
-import android.accessibilityservice.AccessibilityService
 import android.content.Context
 import android.graphics.Color
 import android.graphics.PixelFormat
@@ -40,30 +39,23 @@ object ShortsBlockOverlayManager {
         lastShownMillis = now
 
         mainHandler.post {
-            val isAccessibility = context is AccessibilityService
-            if (!isAccessibility && !Settings.canDrawOverlays(context)) {
-                // Fallback to stylized Toast if overlay permission is not granted
+            if (!Settings.canDrawOverlays(context)) {
                 Toast.makeText(
                     context,
-                    "🚫 $platformName Blocked!\nMindless scrolling prevented.",
+                    "$platformName Blocked! Mindless scrolling prevented.",
                     Toast.LENGTH_SHORT
                 ).show()
                 return@post
             }
-
             dismissInternal(context)
 
             try {
-                val (targetContext, windowType) = if (isAccessibility) {
-                    Pair(context, WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY)
+                val targetContext = context.applicationContext ?: context
+                val windowType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
                 } else {
-                    val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-                    } else {
-                        @Suppress("DEPRECATION")
-                        WindowManager.LayoutParams.TYPE_PHONE
-                    }
-                    Pair(context.applicationContext ?: context, type)
+                    @Suppress("DEPRECATION")
+                    WindowManager.LayoutParams.TYPE_PHONE
                 }
 
                 val windowManager = targetContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -178,7 +170,7 @@ object ShortsBlockOverlayManager {
 
         overlayView?.let { view ->
             try {
-                val wm = (if (context is AccessibilityService) context else (context.applicationContext ?: context))
+                val wm = (context.applicationContext ?: context)
                     .getSystemService(Context.WINDOW_SERVICE) as WindowManager
                 if (view.isAttachedToWindow) {
                     wm.removeViewImmediate(view)

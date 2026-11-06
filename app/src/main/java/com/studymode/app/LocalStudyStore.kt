@@ -866,8 +866,7 @@ class LocalStudyStore(context: Context) {
                 "package_name = ?",
                 arrayOf(packageName),
             )
-            AppBlockingAccessibilityService.updateConfiguration(appContext)
-            AppMonitorService.start(appContext)
+                        AppMonitorService.start(appContext)
             return
         }
 
@@ -886,8 +885,7 @@ class LocalStudyStore(context: Context) {
             values,
             SQLiteDatabase.CONFLICT_REPLACE,
         )
-        AppBlockingAccessibilityService.updateConfiguration(appContext)
-        AppMonitorService.start(appContext)
+                AppMonitorService.start(appContext)
     }
 
     fun blockedDomains(): List<BlockedDomain> =
@@ -1042,8 +1040,7 @@ class LocalStudyStore(context: Context) {
                 arrayOf(cleanPkg),
             )
         }
-        AppBlockingAccessibilityService.updateConfiguration(appContext)
-        AppMonitorService.start(appContext)
+                AppMonitorService.start(appContext)
     }
 
     fun isAppBlocked(packageName: String): Boolean =
@@ -1072,8 +1069,7 @@ class LocalStudyStore(context: Context) {
 
     fun resumeBlockingNow() {
         blockerPreferences.edit().remove(KEY_BLOCKING_PAUSED_UNTIL).apply()
-        AppBlockingAccessibilityService.updateConfiguration(appContext)
-        AppMonitorService.start(appContext)
+                AppMonitorService.start(appContext)
     }
 
     fun blockingPausedUntil(): Long =
@@ -1084,8 +1080,7 @@ class LocalStudyStore(context: Context) {
 
     fun setFocusOnlyBlockingEnabled(enabled: Boolean) {
         settingsPreferences.edit().putBoolean(KEY_FOCUS_ONLY_BLOCKING, enabled).apply()
-        AppBlockingAccessibilityService.updateConfiguration(appContext)
-        AppMonitorService.start(appContext)
+                AppMonitorService.start(appContext)
     }
 
     fun isMindfulFrictionEnabled(): Boolean =

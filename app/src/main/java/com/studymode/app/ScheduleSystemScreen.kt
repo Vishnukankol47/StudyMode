@@ -935,7 +935,7 @@ private fun BlockedAppsDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    "Only apps you select here are added during this schedule. The global Blocklist still applies. Enable StudyMode's Accessibility service to enforce app blocking.",
+                    "Only apps you select here are added during this schedule. The global Blocklist still applies. App blocking is enforced automatically.",
                     color = ScheduleMuted,
                     style = MaterialTheme.typography.bodySmall,
                 )

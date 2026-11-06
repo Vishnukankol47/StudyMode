@@ -104,8 +104,7 @@ class MainActivity : ComponentActivity() {
         }
         FocusTimerAlarms.restore(this)
         AppMonitorService.start(this)
-        AppBlockingAccessibilityService.updateConfiguration(this)
-        if (intent?.getBooleanExtra("OPEN_ACTIVE_FOCUS", false) == true) {
+                if (intent?.getBooleanExtra("OPEN_ACTIVE_FOCUS", false) == true) {
             pendingOpenActiveFocus.value = true
         }
         if (intent?.getBooleanExtra("LAUNCHER_BLOCKED_NOTICE", false) == true) {
@@ -147,8 +146,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         AppMonitorService.start(this)
-        AppBlockingAccessibilityService.updateConfiguration(this)
-        StudyModeWidgetProvider.updateAllWidgets(this)
+                StudyModeWidgetProvider.updateAllWidgets(this)
     }
 
     override fun onNewIntent(intent: android.content.Intent) {
@@ -368,16 +366,15 @@ private fun StudyModeHome(store: LocalStudyStore, requestedScheduleId: Long?) {
 
     val usageAccessEnabled = remember(resumeTrigger) { hasUsageAccess(context) }
     val overlayEnabled = remember(resumeTrigger) { hasOverlayPermission(context) }
-    val accessibilityEnabled = remember(resumeTrigger) { isBlockingServiceEnabled(context) }
-    var permissionsPromptDismissed by rememberSaveable { mutableStateOf(false) }
+        var permissionsPromptDismissed by rememberSaveable { mutableStateOf(false) }
 
-    val shouldShowPermissionsPrompt = (!usageAccessEnabled || !overlayEnabled || accessibilityEnabled) && !permissionsPromptDismissed
+    val shouldShowPermissionsPrompt = (!usageAccessEnabled || !overlayEnabled) && !permissionsPromptDismissed
 
     if (shouldShowPermissionsPrompt) {
         AppBlockingPermissionsDialog(
             usageAccessEnabled = usageAccessEnabled,
             overlayEnabled = overlayEnabled,
-            accessibilityEnabled = accessibilityEnabled,
+            accessibilityEnabled = false,
             onDismiss = { permissionsPromptDismissed = true },
         )
     }

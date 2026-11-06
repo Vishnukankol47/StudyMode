@@ -194,11 +194,9 @@ class AppMonitorService : Service() {
                 currentAppSessionStartMillis = 0L
                 updateUsageNotification(null, store)
             }
-            // If leaving short-video app and accessibility is off, pause floating badge
-            if (AppBlockingAccessibilityService.activeInstance == null) {
-                FloatingScrollCounterOverlayManager.pause(this, isScreenOff = false)
-                lastPlayerInterfaceId = null
-            }
+            // If leaving short-video app, pause floating badge
+            FloatingScrollCounterOverlayManager.pause(this, isScreenOff = false)
+            lastPlayerInterfaceId = null
             return
         }
 
@@ -214,20 +212,14 @@ class AppMonitorService : Service() {
             updateUsageNotification(newPackage, store)
         }
 
-        // Zero-Accessibility Safe Mode: Stand by with AudioPlaybackCallback only when Accessibility is OFF
-        if (AppBlockingAccessibilityService.activeInstance != null) {
-            if (isAudioCallbackRegistered) {
-                unregisterFallbackAudioCallback()
+        // Reel & Shorts detection via AudioPlaybackCallback
+        if (isShortVideoHost) {
+            if (!isAudioCallbackRegistered) {
+                registerFallbackAudioCallback()
             }
-        } else {
-            if (isShortVideoHost) {
-                if (!isAudioCallbackRegistered) {
-                    registerFallbackAudioCallback()
-                }
-            } else if (isPackageChanged) {
-                FloatingScrollCounterOverlayManager.pause(this, isScreenOff = false)
-                lastPlayerInterfaceId = null
-            }
+        } else if (isPackageChanged) {
+            FloatingScrollCounterOverlayManager.pause(this, isScreenOff = false)
+            lastPlayerInterfaceId = null
         }
     }
 
@@ -271,11 +263,6 @@ class AppMonitorService : Service() {
     }
 
     private fun onFallbackAudioPlaybackChanged(configs: List<AudioPlaybackConfiguration>?) {
-        // If Accessibility is active, stand down (let Accessibility Service handle with full node inspection)
-        if (AppBlockingAccessibilityService.activeInstance != null) {
-            unregisterFallbackAudioCallback()
-            return
-        }
         if (!isScreenOn) return
         val currentPkg = currentTrackedPackage ?: return
         val platformName = getShortVideoPlatformName(currentPkg) ?: return
@@ -360,14 +347,7 @@ class AppMonitorService : Service() {
                     updateUsageNotification(currentTrackedPackage, store)
                 }
 
-                // Adaptive sleep: If Accessibility Service is running, poll gently every 1500ms.
-                // If only UsageStats is active, poll every 400ms for swift foreground app blocking.
-                val pollInterval = if (AppBlockingAccessibilityService.activeInstance != null) {
-                    1500L
-                } else {
-                    400L
-                }
-                delay(pollInterval)
+                delay(400L)
             }
         }
     }

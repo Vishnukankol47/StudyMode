@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
-    android:packageNames="com.google.android.youtube,app.revanced.android.youtube,app.rvx.android.youtube,com.instagram.android,com.instagram.lite,com.snapchat.android,com.snap.android,com.zhiliaoapp.musically,com.ss.android.ugc.trill,com.facebook.katana,com.facebook.lite,com.studymode.app"
-    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowsChanged|typeWindowContentChanged|typeViewScrolled"
-    android:accessibilityFeedbackType="feedbackGeneric"
-    android:accessibilityFlags="flagDefault|flagRetrieveInteractiveWindows|flagReportViewIds|flagIncludeNotImportantViews"
-    android:canRetrieveWindowContent="true"
-    android:description="@string/accessibility_service_description"
-    android:notificationTimeout="50" />
