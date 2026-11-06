@@ -161,6 +161,11 @@ object ShortsReelsDetector {
         }
 
         // Confirmed Shorts/Reels active!
+        val isPlatformChanged = activePlatform.isNotEmpty() && activePlatform != detectionResult.platformName
+        if (isPlatformChanged) {
+            lastShortDigest = ""
+            lastScrollEventMillis = 0L
+        }
         isShortsSessionActive = true
         activePlatform = detectionResult.platformName
         lastShortsConfirmedMillis = now
@@ -187,21 +192,24 @@ object ShortsReelsDetector {
 
             // Case A: Creator digest changed to a new valid creator
             if (digest.isNotEmpty() && lastShortDigest.isNotEmpty() && digest != lastShortDigest) {
-                if (now - lastScrollEventMillis >= 1000L) {
+                if (now - lastScrollEventMillis >= 2200L) {
                     lastScrollEventMillis = now
                     isNewReel = true
+                    android.util.Log.d("StudyMode", "ShortsReelsDetector: NEW VIDEO digest change '$lastShortDigest' -> '$digest'")
                 }
                 lastShortDigest = digest
             } else if (lastShortDigest.isEmpty() && digest.isNotEmpty()) {
                 // Initialize session on current video
                 lastShortDigest = digest
+                android.util.Log.d("StudyMode", "ShortsReelsDetector: INITIAL VIDEO digest='$digest'")
             }
 
             // Case B: Genuine scroll/swipe gesture (TYPE_VIEW_SCROLLED)
-            // Debounced by 1200ms; only triggers if digest change didn't already increment for this transition
-            if (isScrollEvent && !isNewReel && (now - lastScrollEventMillis >= 1200L)) {
+            // Debounced by 2200ms (to prevent start-of-swipe and end-of-fling double counting)
+            if (isScrollEvent && !isNewReel && (now - lastScrollEventMillis >= 2200L)) {
                 lastScrollEventMillis = now
                 isNewReel = true
+                android.util.Log.d("StudyMode", "ShortsReelsDetector: NEW VIDEO scroll gesture")
             }
 
             FloatingScrollCounterOverlayManager.updateCounter(
@@ -302,7 +310,12 @@ object ShortsReelsDetector {
             }
 
             // Creator handle starting with '@' (e.g. @flatlandstories, @SujithKottakkal)
-            if (channelHandleText.isEmpty()) {
+            // MUST be on-screen to avoid picking up off-screen ViewPager children!
+            val nodeRect = android.graphics.Rect()
+            node.getBoundsInScreen(nodeRect)
+            val isOnScreen = (node.isVisibleToUser || nodeRect.height() > 0) && nodeRect.bottom > 80 && nodeRect.top < 1550
+
+            if (isOnScreen && channelHandleText.isEmpty()) {
                 if (text.startsWith("@") && text.length in 2..40) {
                     channelHandleText = text
                 } else if (desc.startsWith("@") && desc.length in 2..40) {
@@ -540,26 +553,32 @@ object ShortsReelsDetector {
             }
 
             // 2. Creator handle (prioritize clips_author_username or Reel by X from active Reels player)
-            if (resId.contains("clips_author_username")) {
-                val h = if (text.isNotBlank()) text else desc
-                if (h.isNotBlank() && h.length in 2..40) creatorHandle = h
-            } else if (desc.startsWith("Reel by ", ignoreCase = true)) {
-                val handle = desc.substringAfter("Reel by ").substringBefore(".").trim()
-                if (handle.isNotEmpty() && handle.length in 2..40) {
-                    creatorHandle = handle
-                }
-            } else if (creatorHandle.isEmpty()) {
-                if (resId.contains("author_username")) {
-                    creatorHandle = if (text.isNotBlank()) text else desc
-                } else if (desc.startsWith("Profile picture of ", ignoreCase = true)) {
-                    val handle = desc.substringAfter("Profile picture of ").trim()
+            val igRect = android.graphics.Rect()
+            node.getBoundsInScreen(igRect)
+            val isIgOnScreen = (node.isVisibleToUser || igRect.height() > 0) && igRect.bottom > 80 && igRect.top < 1550
+
+            if (isIgOnScreen) {
+                if (resId.contains("clips_author_username")) {
+                    val h = if (text.isNotBlank()) text else desc
+                    if (h.isNotBlank() && h.length in 2..40) creatorHandle = h
+                } else if (desc.startsWith("Reel by ", ignoreCase = true)) {
+                    val handle = desc.substringAfter("Reel by ").substringBefore(".").trim()
                     if (handle.isNotEmpty() && handle.length in 2..40) {
                         creatorHandle = handle
                     }
-                } else if (text.startsWith("@") && text.length in 2..40) {
-                    creatorHandle = text
-                } else if (desc.startsWith("@") && desc.length in 2..40) {
-                    creatorHandle = desc
+                } else if (creatorHandle.isEmpty()) {
+                    if (resId.contains("author_username")) {
+                        creatorHandle = if (text.isNotBlank()) text else desc
+                    } else if (desc.startsWith("Profile picture of ", ignoreCase = true)) {
+                        val handle = desc.substringAfter("Profile picture of ").trim()
+                        if (handle.isNotEmpty() && handle.length in 2..40) {
+                            creatorHandle = handle
+                        }
+                    } else if (text.startsWith("@") && text.length in 2..40) {
+                        creatorHandle = text
+                    } else if (desc.startsWith("@") && desc.length in 2..40) {
+                        creatorHandle = desc
+                    }
                 }
             }
 

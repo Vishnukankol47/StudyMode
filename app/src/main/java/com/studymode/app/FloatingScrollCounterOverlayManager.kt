@@ -142,7 +142,7 @@ object FloatingScrollCounterOverlayManager {
                 flushActiveSecondsToStore()
             }
 
-            val needsShow = !isShowing || overlayView == null || (overlayView?.isAttachedToWindow == false) || isPlatformChanged
+            val needsShow = !isShowing || overlayView == null || isPlatformChanged
             currentPlatform = platformName
 
             if (needsShow) {
@@ -159,18 +159,15 @@ object FloatingScrollCounterOverlayManager {
             }
 
             if (isScrollEvent) {
-                if (now - lastScrollEventMillis >= 1200L) {
-                    lastScrollEventMillis = now
-                    store.incrementTodayPlatformScrolledCount(platformName)
-                    todayDisplayCount = store.todayPlatformScrolledCount(platformName)
+                store.incrementTodayPlatformScrolledCount(platformName)
+                todayDisplayCount = store.todayPlatformScrolledCount(platformName)
 
-                    // Check scroll limit
-                    val limit = store.getShortsScrollLimit()
-                    if (limit in 1..todayDisplayCount) {
-                        onLimitReached?.invoke()
-                        resetAndHide(context)
-                        return@post
-                    }
+                // Check scroll limit
+                val limit = store.getShortsScrollLimit()
+                if (limit in 1..todayDisplayCount) {
+                    onLimitReached?.invoke()
+                    resetAndHide(context)
+                    return@post
                 }
             }
 
