@@ -129,7 +129,7 @@ object ShortsReelsDetector {
                 // Check if user has explicitly exited to a long-form video or home feed
                 val hasExplicitExit = when {
                     isYouTube -> isExplicitYouTubeExit(rootNode)
-                    isInstagram -> isExplicitInstagramExit(rootNode) || (now - lastShortsConfirmedMillis > 1200L)
+                    isInstagram -> isExplicitInstagramExit(rootNode)
                     else -> false
                 }
 
@@ -192,7 +192,7 @@ object ShortsReelsDetector {
 
             // Case A: Creator digest changed to a new valid creator
             if (digest.isNotEmpty() && lastShortDigest.isNotEmpty() && digest != lastShortDigest) {
-                if (now - lastScrollEventMillis >= 2200L) {
+                if (now - lastScrollEventMillis >= 1450L) {
                     lastScrollEventMillis = now
                     isNewReel = true
                     android.util.Log.d("StudyMode", "ShortsReelsDetector: NEW VIDEO digest change '$lastShortDigest' -> '$digest'")
@@ -205,8 +205,8 @@ object ShortsReelsDetector {
             }
 
             // Case B: Genuine scroll/swipe gesture (TYPE_VIEW_SCROLLED)
-            // Debounced by 2200ms (to prevent start-of-swipe and end-of-fling double counting)
-            if (isScrollEvent && !isNewReel && (now - lastScrollEventMillis >= 2200L)) {
+            // Debounced by 1450ms (matches proven fallback timing and absorbs ViewPager fling snap events)
+            if (isScrollEvent && !isNewReel && (now - lastScrollEventMillis >= 1450L)) {
                 lastScrollEventMillis = now
                 isNewReel = true
                 android.util.Log.d("StudyMode", "ShortsReelsDetector: NEW VIDEO scroll gesture")
@@ -640,10 +640,10 @@ object ShortsReelsDetector {
         }
 
         // Targeted Exclusion:
-        // Exclude only if user is explicitly on Search or Profile tab,
-        // OR if not in Reels tab/header and Home feed signals are present (Home tab, Home logo, Stories, Carousel)
-        val isExplicitExcluded = isSearchSelected || isProfileSelected ||
-            (!isReelsTabSelected && !hasReelsHeader && (isHomeSelected || hasInstagramHomeLogo || hasStoriesTray || isCarouselPost))
+        // Do not exclude if a full-screen Reel is actively showing (even if opened from Explore/Search)
+        val isFullscreenReel = hasReelsByResourceId || (hasLikeButton && hasCommentButton && (hasShareButton || hasAudioTrack))
+        val isExplicitExcluded = (!isFullscreenReel && (isSearchSelected || isProfileSelected)) ||
+            (!isReelsTabSelected && !hasReelsHeader && !isFullscreenReel && (isHomeSelected || hasInstagramHomeLogo || hasStoriesTray || isCarouselPost))
 
         if (isExplicitExcluded) {
             return null
@@ -673,6 +673,21 @@ object ShortsReelsDetector {
     private fun isExplicitInstagramExit(root: AccessibilityNodeInfo): Boolean {
         val nodes = mutableListOf<AccessibilityNodeInfo>()
         flattenNodes(root, nodes, maxNodes = 250)
+
+        // If a full-screen Reel is actively playing, never treat as exit!
+        var hasLike = false
+        var hasComment = false
+        var hasReelsContainer = false
+        for (node in nodes) {
+            val resId = node.viewIdResourceName?.lowercase() ?: ""
+            val desc = node.contentDescription?.toString()?.lowercase() ?: ""
+            if (resId.contains("like_button") || desc == "like" || desc.contains("like reel")) hasLike = true
+            if (resId.contains("comment_button") || desc == "comment" || desc.contains("comment on reel")) hasComment = true
+            if (resId.contains("reel_viewer") || resId.contains("clips_viewer") || resId.contains("unified_clips")) hasReelsContainer = true
+        }
+        if (hasReelsContainer || (hasLike && hasComment)) {
+            return false
+        }
 
         for (node in nodes) {
             val desc = node.contentDescription?.toString()?.lowercase() ?: ""

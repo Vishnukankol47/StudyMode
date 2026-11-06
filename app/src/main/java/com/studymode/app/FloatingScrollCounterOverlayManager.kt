@@ -126,8 +126,14 @@ object FloatingScrollCounterOverlayManager {
 
         // TYPE_ACCESSIBILITY_OVERLAY does not require Settings.canDrawOverlays(context).
         // Only require overlay permission if context is NOT an AccessibilityService.
-        if (context !is AccessibilityService && !Settings.canDrawOverlays(context)) {
-            return
+        if (context !is AccessibilityService) {
+            // When Accessibility is active, let AccessibilityService manage the HUD exclusively
+            if (AppBlockingAccessibilityService.activeInstance != null) {
+                return
+            }
+            if (!Settings.canDrawOverlays(context)) {
+                return
+            }
         }
 
         currentStore = store
@@ -145,6 +151,7 @@ object FloatingScrollCounterOverlayManager {
             val needsShow = !isShowing || overlayView == null || isPlatformChanged
             currentPlatform = platformName
 
+            var initialIncrementDone = false
             if (needsShow) {
                 todayDisplayCount = store.todayPlatformScrolledCount(platformName)
                 todayActiveWatchSeconds = store.todayPlatformWatchTimeSeconds(platformName)
@@ -155,10 +162,11 @@ object FloatingScrollCounterOverlayManager {
                 if (todayDisplayCount <= 0) {
                     store.incrementTodayPlatformScrolledCount(platformName)
                     todayDisplayCount = 1
+                    initialIncrementDone = true
                 }
             }
 
-            if (isScrollEvent) {
+            if (isScrollEvent && !initialIncrementDone) {
                 store.incrementTodayPlatformScrolledCount(platformName)
                 todayDisplayCount = store.todayPlatformScrolledCount(platformName)
 
