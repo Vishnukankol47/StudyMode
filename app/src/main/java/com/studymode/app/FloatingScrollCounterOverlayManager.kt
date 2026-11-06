@@ -17,6 +17,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import java.util.Calendar
 import kotlin.math.hypot
 
 /**
@@ -26,11 +27,11 @@ import kotlin.math.hypot
  * Instagram Reels, Snapchat Spotlight, and Facebook Reels.
  *
  * Shows:
- * - Real-time reels/shorts swiped count in current session
- * - Active elapsed time in current session (e.g. "⚡ 12 Reels • 3m")
+ * - Real-time reels/shorts swiped count for the current calendar day (resets at 12:00 AM midnight)
+ * - Actual active watch time for the current calendar day (formatted as e.g. "12 Reels • 3m", "25 Reels • 1 hr 12 min")
+ * - Freezes immediately on screen-off / app-switch without accumulating sleep or idle hours
  * - Dynamic awareness outline color (Green -> Amber -> Red Alert)
- * - Persists today's total scrolls into LocalStudyStore
- * - Smooth touch dragging across the screen
+ * - Smooth touch dragging across the screen with saved position
  */
 object FloatingScrollCounterOverlayManager {
 
@@ -41,16 +42,18 @@ object FloatingScrollCounterOverlayManager {
     private var isShowing: Boolean = false
 
     private val mainHandler = Handler(Looper.getMainLooper())
-    @Volatile private var sessionScrollCount: Int = 0
-    @Volatile private var sessionStartTimeMillis: Long = 0L
-    @Volatile private var pausedElapsedSeconds: Long = 0L
-    @Volatile private var pausedAtMillis: Long = 0L
-    @Volatile private var wasScreenOffPause: Boolean = false
-    @Volatile private var isPaused: Boolean = false
+
+    // Day & Active Watch Tracking (Resets at 12:00 AM Midnight)
+    @Volatile private var activeDayKey: String = ""
+    @Volatile private var todayDisplayCount: Int = 0
+    @Volatile private var todayActiveWatchSeconds: Long = 0L
+    @Volatile private var lastSecondsSyncTime: Long = 0L
+    @Volatile private var currentStore: LocalStudyStore? = null
+
     private var lastScrollEventMillis: Long = 0L
     private var currentPlatform: String = ""
 
-    // Drag positions (persisted during session)
+    // Drag positions (persisted across sessions)
     private var savedPosX: Int = -1
     private var savedPosY: Int = -1
 
@@ -59,10 +62,46 @@ object FloatingScrollCounterOverlayManager {
     private var iconImageView: ImageView? = null
     private var bgDrawable: GradientDrawable? = null
 
-    // 1-second ticker for active elapsed time
+    private fun getTodayDayKey(): String = Calendar.getInstance().let {
+        "${it.get(Calendar.YEAR)}-${it.get(Calendar.DAY_OF_YEAR)}"
+    }
+
+    private fun checkDayRollover(store: LocalStudyStore) {
+        val today = getTodayDayKey()
+        if (activeDayKey.isEmpty()) {
+            activeDayKey = today
+            store.resetTodayReelsIfNewDay()
+            todayDisplayCount = store.todayReelsScrolledCount()
+            todayActiveWatchSeconds = store.todayReelsWatchTimeSeconds()
+            lastSecondsSyncTime = System.currentTimeMillis()
+        } else if (today != activeDayKey) {
+            // 12:00 AM Midnight Rollover!
+            activeDayKey = today
+            store.resetTodayReelsIfNewDay()
+            todayDisplayCount = 0
+            todayActiveWatchSeconds = 0L
+            lastSecondsSyncTime = System.currentTimeMillis()
+            updateTextAndColor()
+        }
+    }
+
+    // 1-second ticker for active elapsed time (only runs while viewing Shorts/Reels)
     private val timeTickerRunnable = object : Runnable {
         override fun run() {
             if (isShowing && overlayView != null) {
+                currentStore?.let { store ->
+                    checkDayRollover(store)
+                }
+                todayActiveWatchSeconds++
+
+                // Periodically sync active watch time every 5 seconds
+                val now = System.currentTimeMillis()
+                if (now - lastSecondsSyncTime >= 5000L) {
+                    val delta = ((now - lastSecondsSyncTime) / 1000L).coerceAtLeast(1L)
+                    lastSecondsSyncTime = now
+                    currentStore?.addTodayReelsWatchTimeSeconds(delta)
+                }
+
                 updateTextAndColor()
                 mainHandler.postDelayed(this, 1000L)
             }
@@ -87,6 +126,9 @@ object FloatingScrollCounterOverlayManager {
             return
         }
 
+        currentStore = store
+        checkDayRollover(store)
+
         val now = System.currentTimeMillis()
 
         // Debounce swipe events (min 1200ms between reels)
@@ -94,13 +136,13 @@ object FloatingScrollCounterOverlayManager {
         if (isScrollEvent) {
             if (now - lastScrollEventMillis >= 1200L) {
                 lastScrollEventMillis = now
-                sessionScrollCount++
                 store.incrementTodayReelsScrolledCount()
+                todayDisplayCount = store.todayReelsScrolledCount()
                 countIncremented = true
 
                 // Check scroll limit
                 val limit = store.getShortsScrollLimit()
-                if (limit in 1..sessionScrollCount) {
+                if (limit in 1..todayDisplayCount) {
                     onLimitReached?.invoke()
                     resetAndHide(context)
                     return
@@ -109,35 +151,22 @@ object FloatingScrollCounterOverlayManager {
         }
 
         mainHandler.post {
-            // Restore from pause: preserves session scroll count & resumes timer exactly where it left off
-            if (isPaused || pausedElapsedSeconds > 0L) {
-                val nowCurrent = System.currentTimeMillis()
-                // Expire only if user left to a completely different app for > 5 minutes AND not a screen off
-                if (!wasScreenOffPause && pausedAtMillis > 0L && (nowCurrent - pausedAtMillis > 5 * 60 * 1000L)) {
-                    sessionScrollCount = 0
-                    sessionStartTimeMillis = 0L
-                    pausedElapsedSeconds = 0L
-                } else if (pausedElapsedSeconds > 0L) {
-                    sessionStartTimeMillis = nowCurrent - (pausedElapsedSeconds * 1000L)
-                    pausedElapsedSeconds = 0L
-                }
-                isPaused = false
-                pausedAtMillis = 0L
-                wasScreenOffPause = false
-            }
+            checkDayRollover(store)
 
             if (!isShowing || overlayView == null || currentPlatform != platformName) {
                 currentPlatform = platformName
                 if (!isShowing) {
-                    if (sessionScrollCount <= 0) {
-                        sessionScrollCount = if (countIncremented) 2 else 1
-                        if (sessionScrollCount == 1 && !countIncremented) {
-                            store.incrementTodayReelsScrolledCount()
+                    if (todayDisplayCount <= 0) {
+                        todayDisplayCount = store.todayReelsScrolledCount()
+                        if (todayDisplayCount <= 0) {
+                            todayDisplayCount = if (countIncremented) 2 else 1
+                            if (!countIncremented) {
+                                store.incrementTodayReelsScrolledCount()
+                            }
                         }
                     }
-                    if (sessionStartTimeMillis == 0L) {
-                        sessionStartTimeMillis = now
-                    }
+                    todayActiveWatchSeconds = store.todayReelsWatchTimeSeconds()
+                    lastSecondsSyncTime = System.currentTimeMillis()
                 }
                 showOverlay(context, platformName)
             } else {
@@ -147,13 +176,10 @@ object FloatingScrollCounterOverlayManager {
     }
 
     private fun showOverlay(context: Context, platformName: String) {
+        if (isShowing) {
+            flushActiveSecondsToStore()
+        }
         dismissInternal(context)
-        if (sessionStartTimeMillis == 0L) {
-            sessionStartTimeMillis = System.currentTimeMillis()
-        }
-        if (sessionScrollCount <= 0) {
-            sessionScrollCount = 1
-        }
 
         try {
             val (targetContext, windowType) = if (context is AccessibilityService) {
@@ -172,7 +198,6 @@ object FloatingScrollCounterOverlayManager {
             val density = targetContext.resources.displayMetrics.density
 
             // Default position: top-left corner (14dp from left, 64dp from top)
-            // Matches modern short-form UX and leaves right-side action buttons completely clear
             val posX = if (savedPosX >= 0) savedPosX else (14 * density).toInt()
             val posY = if (savedPosY >= 0) savedPosY else (64 * density).toInt()
 
@@ -201,14 +226,14 @@ object FloatingScrollCounterOverlayManager {
                 val gd = GradientDrawable().apply {
                     cornerRadius = 20 * density
                     setColor(Color.parseColor("#E6121412"))
-                    setStroke((1.5f * density).toInt(), Color.parseColor("#80D957"))
+                    setStroke((1.5f * density).toInt(), Color.parseColor("#4ADE80"))
                 }
                 bgDrawable = gd
                 background = gd
                 elevation = 10 * density
             }
 
-            // Platform Icon
+            // Platform Icon (dynamic Shorts vs Reels)
             val iconView = ImageView(targetContext).apply {
                 val iconSize = (18 * density).toInt()
                 this.layoutParams = LinearLayout.LayoutParams(iconSize, iconSize).apply {
@@ -225,7 +250,7 @@ object FloatingScrollCounterOverlayManager {
             iconImageView = iconView
             container.addView(iconView)
 
-            // Dual Stat Text: "12 Shorts • 3m"
+            // Dual Stat Text: e.g. "12 Shorts • 15 min" or "18 Reels • 1 hr 12 min"
             val textView = TextView(targetContext).apply {
                 this.layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -274,11 +299,11 @@ object FloatingScrollCounterOverlayManager {
                         MotionEvent.ACTION_UP -> {
                             if (!hasMoved) {
                                 // Tap action: quick summary toast
-                                val elapsedSec = if (sessionStartTimeMillis > 0L) ((System.currentTimeMillis() - sessionStartTimeMillis) / 1000).coerceAtLeast(0) else 0L
-                                val timeText = formatTime(elapsedSec)
+                                val timeText = formatTime(todayActiveWatchSeconds)
+                                val videoUnit = if (todayDisplayCount == 1) "short video" else "short videos"
                                 Toast.makeText(
                                     targetContext,
-                                    "⚡ $sessionScrollCount short videos watched in $timeText.",
+                                    "⚡ $todayDisplayCount $videoUnit watched today ($timeText).",
                                     Toast.LENGTH_SHORT
                                 ).show()
                             }
@@ -306,9 +331,9 @@ object FloatingScrollCounterOverlayManager {
 
             overlayView = container
             isShowing = true
-            android.util.Log.i("StudyMode", "FloatingScrollCounter: Displayed HUD for $platformName, count=$sessionScrollCount")
+            android.util.Log.i("StudyMode", "FloatingScrollCounter: Displayed HUD for $platformName, count=$todayDisplayCount")
 
-            // Start real-time ticker
+            // Start real-time active ticker
             mainHandler.removeCallbacks(timeTickerRunnable)
             updateTextAndColor()
             mainHandler.postDelayed(timeTickerRunnable, 1000L)
@@ -321,13 +346,8 @@ object FloatingScrollCounterOverlayManager {
     }
 
     private fun updateTextAndColor() {
-        val count = sessionScrollCount
-        val elapsedSec = if (sessionStartTimeMillis > 0L) {
-            ((System.currentTimeMillis() - sessionStartTimeMillis) / 1000).coerceAtLeast(0)
-        } else {
-            0L
-        }
-        val timeText = formatTime(elapsedSec)
+        val count = todayDisplayCount.coerceAtLeast(0)
+        val timeText = formatTime(todayActiveWatchSeconds)
 
         val isYt = currentPlatform.contains("YouTube", ignoreCase = true)
         val unit = if (isYt) {
@@ -350,51 +370,64 @@ object FloatingScrollCounterOverlayManager {
         bgDrawable?.setStroke((1.5f * density).toInt(), strokeColor)
     }
 
-    private fun formatTime(seconds: Long): String {
-        return if (seconds < 60) {
-            "${seconds}s"
+    /**
+     * Formats seconds into human-readable text.
+     * Shows:
+     * - Under 1 min: "45s"
+     * - Under 5 min: "3m 25s"
+     * - Under 1 hour: "15 min"
+     * - 1 hour or more: "1 hr 12 min", "2 hr"
+     */
+    fun formatTime(seconds: Long): String {
+        if (seconds < 60) {
+            return "${seconds}s"
+        }
+        val hours = seconds / 3600
+        val remainingSeconds = seconds % 3600
+        val mins = remainingSeconds / 60
+        val secs = remainingSeconds % 60
+
+        return if (hours > 0) {
+            if (mins > 0) {
+                "$hours hr $mins min"
+            } else {
+                "$hours hr"
+            }
         } else {
-            val mins = seconds / 60
-            val secs = seconds % 60
-            if (secs > 0 && mins < 10) {
+            if (secs > 0 && mins < 5) {
                 "${mins}m ${secs}s"
             } else {
-                "${mins}m"
+                "${mins} min"
             }
         }
     }
 
+    private fun flushActiveSecondsToStore() {
+        val now = System.currentTimeMillis()
+        if (lastSecondsSyncTime > 0L && now > lastSecondsSyncTime) {
+            val delta = ((now - lastSecondsSyncTime) / 1000L).coerceAtLeast(0L)
+            if (delta > 0L) {
+                currentStore?.addTodayReelsWatchTimeSeconds(delta)
+            }
+        }
+        lastSecondsSyncTime = System.currentTimeMillis()
+    }
+
     fun pause(context: Context, isScreenOff: Boolean = false) {
         mainHandler.post {
-            if (sessionStartTimeMillis > 0L) {
-                pausedElapsedSeconds = ((System.currentTimeMillis() - sessionStartTimeMillis) / 1000L).coerceAtLeast(1L)
-            }
-            isPaused = true
-            pausedAtMillis = System.currentTimeMillis()
-            if (isScreenOff) {
-                wasScreenOffPause = true
-            }
+            flushActiveSecondsToStore()
             dismissInternal(context)
         }
     }
 
     fun hide(context: Context, resetSession: Boolean = false) {
-        if (resetSession) {
-            resetAndHide(context)
-        } else {
-            pause(context, isScreenOff = false)
-        }
+        pause(context, isScreenOff = false)
     }
 
     fun resetAndHide(context: Context) {
         mainHandler.post {
+            flushActiveSecondsToStore()
             dismissInternal(context)
-            sessionScrollCount = 0
-            sessionStartTimeMillis = 0L
-            pausedElapsedSeconds = 0L
-            pausedAtMillis = 0L
-            wasScreenOffPause = false
-            isPaused = false
         }
     }
 

@@ -1508,6 +1508,39 @@ class LocalStudyStore(context: Context) {
             .apply()
     }
 
+    fun todayReelsWatchTimeSeconds(): Long {
+        val today = Calendar.getInstance().let { "${it.get(Calendar.YEAR)}-${it.get(Calendar.DAY_OF_YEAR)}" }
+        val savedDay = blockerPreferences.getString(KEY_REELS_WATCH_TIME_DAY, "")
+        return if (savedDay == today) blockerPreferences.getLong(KEY_REELS_WATCH_TIME_SECONDS, 0L) else 0L
+    }
+
+    fun addTodayReelsWatchTimeSeconds(seconds: Long) {
+        if (seconds <= 0L) return
+        val today = Calendar.getInstance().let { "${it.get(Calendar.YEAR)}-${it.get(Calendar.DAY_OF_YEAR)}" }
+        val savedDay = blockerPreferences.getString(KEY_REELS_WATCH_TIME_DAY, "")
+        val current = if (savedDay == today) blockerPreferences.getLong(KEY_REELS_WATCH_TIME_SECONDS, 0L) else 0L
+        blockerPreferences.edit()
+            .putString(KEY_REELS_WATCH_TIME_DAY, today)
+            .putLong(KEY_REELS_WATCH_TIME_SECONDS, current + seconds)
+            .apply()
+    }
+
+    fun resetTodayReelsIfNewDay(): Boolean {
+        val today = Calendar.getInstance().let { "${it.get(Calendar.YEAR)}-${it.get(Calendar.DAY_OF_YEAR)}" }
+        val savedCountDay = blockerPreferences.getString(KEY_REELS_SCROLLED_DAY, "")
+        val savedTimeDay = blockerPreferences.getString(KEY_REELS_WATCH_TIME_DAY, "")
+        if (savedCountDay != today || savedTimeDay != today) {
+            blockerPreferences.edit()
+                .putString(KEY_REELS_SCROLLED_DAY, today)
+                .putInt(KEY_REELS_SCROLLED_COUNT, 0)
+                .putString(KEY_REELS_WATCH_TIME_DAY, today)
+                .putLong(KEY_REELS_WATCH_TIME_SECONDS, 0L)
+                .apply()
+            return true
+        }
+        return false
+    }
+
     fun pauseTimer(timer: ActiveTimer, nowMillis: Long = System.currentTimeMillis()) {
         val remaining = timer.remainingAt(nowMillis)
         val elapsed = timer.elapsedAt(nowMillis)
@@ -2924,6 +2957,8 @@ fun sleepLogs(limit: Int = 30): List<SleepLog> {
         private const val KEY_SHORTS_SCROLL_LIMIT = "shorts_scroll_limit"
         private const val KEY_REELS_SCROLLED_DAY = "reels_scrolled_day"
         private const val KEY_REELS_SCROLLED_COUNT = "reels_scrolled_count"
+        private const val KEY_REELS_WATCH_TIME_DAY = "reels_watch_time_day"
+        private const val KEY_REELS_WATCH_TIME_SECONDS = "reels_watch_time_seconds"
         private const val KEY_RUNNING = "running"
         private const val KEY_FOCUS_ONLY_BLOCKING = "focus_only_blocking"
         private const val KEY_BLOCKING_PAUSED_UNTIL = "blocking_paused_until"
