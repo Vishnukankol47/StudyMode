@@ -360,7 +360,8 @@ class AppBlockingAccessibilityService : AccessibilityService() {
             info.feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
             info.flags = AccessibilityServiceInfo.DEFAULT or
                     AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS or
-                    AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
+                    AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
+                    AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS
             info.notificationTimeout = 50
             serviceInfo = info
             android.util.Log.d("StudyMode", "Accessibility serviceInfo set: ${targetPackages.size} packages (strictly entertainment + active user blocklist, zero banking/unselected apps)")

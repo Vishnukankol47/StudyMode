@@ -50,8 +50,8 @@ object FloatingScrollCounterOverlayManager {
     @Volatile private var lastSecondsSyncTime: Long = 0L
     @Volatile private var currentStore: LocalStudyStore? = null
 
-    private var lastScrollEventMillis: Long = 0L
-    private var currentPlatform: String = ""
+    @Volatile private var lastScrollEventMillis: Long = 0L
+    @Volatile private var currentPlatform: String = ""
 
     // Drag positions (persisted across sessions)
     private var savedPosX: Int = -1
@@ -131,58 +131,50 @@ object FloatingScrollCounterOverlayManager {
         }
 
         currentStore = store
-        checkDayRollover(store)
-
-        // If user switched platform (e.g. from Instagram Reels to YouTube Shorts), flush & switch buckets
-        val isPlatformChanged = currentPlatform.isNotEmpty() && currentPlatform != platformName
-        if (isPlatformChanged) {
-            flushActiveSecondsToStore()
-            currentPlatform = platformName
-            todayDisplayCount = store.todayPlatformScrolledCount(platformName)
-            todayActiveWatchSeconds = store.todayPlatformWatchTimeSeconds(platformName)
-            lastSecondsSyncTime = System.currentTimeMillis()
-        }
 
         val now = System.currentTimeMillis()
-
-        // Debounce swipe events (min 1200ms between reels)
-        var countIncremented = false
-        if (isScrollEvent) {
-            if (now - lastScrollEventMillis >= 1200L) {
-                lastScrollEventMillis = now
-                store.incrementTodayPlatformScrolledCount(platformName)
-                todayDisplayCount = store.todayPlatformScrolledCount(platformName)
-                countIncremented = true
-
-                // Check scroll limit
-                val limit = store.getShortsScrollLimit()
-                if (limit in 1..todayDisplayCount) {
-                    onLimitReached?.invoke()
-                    resetAndHide(context)
-                    return
-                }
-            }
-        }
 
         mainHandler.post {
             checkDayRollover(store)
 
-            if (!isShowing || overlayView == null || currentPlatform != platformName) {
-                if (isShowing && currentPlatform != platformName) {
-                    flushActiveSecondsToStore()
+            val isPlatformChanged = currentPlatform.isNotEmpty() && currentPlatform != platformName
+            if (isPlatformChanged) {
+                flushActiveSecondsToStore()
+            }
+
+            val needsShow = !isShowing || overlayView == null || (overlayView?.isAttachedToWindow == false) || isPlatformChanged
+            currentPlatform = platformName
+
+            if (needsShow) {
+                todayDisplayCount = store.todayPlatformScrolledCount(platformName)
+                todayActiveWatchSeconds = store.todayPlatformWatchTimeSeconds(platformName)
+                lastSecondsSyncTime = System.currentTimeMillis()
+
+                // If user just entered Reels/Shorts and today's count is 0,
+                // count the first video currently on screen as 1!
+                if (todayDisplayCount <= 0) {
+                    store.incrementTodayPlatformScrolledCount(platformName)
+                    todayDisplayCount = 1
                 }
-                currentPlatform = platformName
-                if (!isShowing || currentPlatform != platformName) {
+            }
+
+            if (isScrollEvent) {
+                if (now - lastScrollEventMillis >= 1200L) {
+                    lastScrollEventMillis = now
+                    store.incrementTodayPlatformScrolledCount(platformName)
                     todayDisplayCount = store.todayPlatformScrolledCount(platformName)
-                    if (todayDisplayCount <= 0) {
-                        todayDisplayCount = if (countIncremented) 2 else 1
-                        if (!countIncremented) {
-                            store.incrementTodayPlatformScrolledCount(platformName)
-                        }
+
+                    // Check scroll limit
+                    val limit = store.getShortsScrollLimit()
+                    if (limit in 1..todayDisplayCount) {
+                        onLimitReached?.invoke()
+                        resetAndHide(context)
+                        return@post
                     }
-                    todayActiveWatchSeconds = store.todayPlatformWatchTimeSeconds(platformName)
-                    lastSecondsSyncTime = System.currentTimeMillis()
                 }
+            }
+
+            if (needsShow) {
                 showOverlay(context, platformName)
             } else {
                 updateTextAndColor()
@@ -346,6 +338,7 @@ object FloatingScrollCounterOverlayManager {
 
             overlayView = container
             isShowing = true
+            currentPlatform = platformName
             android.util.Log.i("StudyMode", "FloatingScrollCounter: Displayed HUD for $platformName, count=$todayDisplayCount")
 
             // Start real-time active ticker
@@ -432,6 +425,7 @@ object FloatingScrollCounterOverlayManager {
         mainHandler.post {
             flushActiveSecondsToStore()
             dismissInternal(context)
+            currentPlatform = ""
         }
     }
 
@@ -443,6 +437,7 @@ object FloatingScrollCounterOverlayManager {
         mainHandler.post {
             flushActiveSecondsToStore()
             dismissInternal(context)
+            currentPlatform = ""
         }
     }
 
@@ -452,15 +447,11 @@ object FloatingScrollCounterOverlayManager {
             try {
                 val wm = (if (context is AccessibilityService) context else (context.applicationContext ?: context))
                     .getSystemService(Context.WINDOW_SERVICE) as WindowManager
-                if (view.isAttachedToWindow) {
-                    wm.removeView(view)
-                }
+                wm.removeViewImmediate(view)
             } catch (_: Exception) {
                 try {
                     val appWm = context.applicationContext?.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
-                    if (view.isAttachedToWindow) {
-                        appWm?.removeView(view)
-                    }
+                    appWm?.removeViewImmediate(view)
                 } catch (_: Exception) {}
             }
         }

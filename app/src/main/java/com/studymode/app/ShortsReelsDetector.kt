@@ -90,7 +90,10 @@ object ShortsReelsDetector {
             return false
         }
 
-        val rootNode = service.rootInActiveWindow
+        val rootNode = (try {
+            service.windows.firstOrNull { it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION && it.root?.packageName?.toString() == packageName }?.root
+        } catch (_: Exception) { null })
+            ?: service.rootInActiveWindow
             ?: (try { event?.source?.window?.root } catch (_: Exception) { null })
             ?: (try { service.windows.firstOrNull { it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION }?.root } catch (_: Exception) { null })
             ?: event?.source
@@ -179,13 +182,12 @@ object ShortsReelsDetector {
         if (scrollCounterEnabled) {
             val isScrollEvent = event?.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED
             val digest = detectionResult.digest
-            android.util.Log.d("StudyMode", "ShortsReelsDetector: digest='$digest', last='$lastShortDigest', event=${event?.eventType}")
 
             var isNewReel = false
 
-            // Digest change indicates user swiped to a different video/creator
+            // Case A: Creator digest changed to a new valid creator
             if (digest.isNotEmpty() && lastShortDigest.isNotEmpty() && digest != lastShortDigest) {
-                if (now - lastScrollEventMillis >= 1200L) {
+                if (now - lastScrollEventMillis >= 1000L) {
                     lastScrollEventMillis = now
                     isNewReel = true
                 }
@@ -193,16 +195,13 @@ object ShortsReelsDetector {
             } else if (lastShortDigest.isEmpty() && digest.isNotEmpty()) {
                 // Initialize session on current video
                 lastShortDigest = digest
-                lastScrollEventMillis = now
             }
 
-            // 2. Genuine scroll/swipe gesture (TYPE_VIEW_SCROLLED) debounced by 1200ms
-            if (isScrollEvent && (now - lastScrollEventMillis >= 1200L)) {
+            // Case B: Genuine scroll/swipe gesture (TYPE_VIEW_SCROLLED)
+            // Debounced by 1200ms; only triggers if digest change didn't already increment for this transition
+            if (isScrollEvent && !isNewReel && (now - lastScrollEventMillis >= 1200L)) {
                 lastScrollEventMillis = now
                 isNewReel = true
-                // Reset lastShortDigest so that when the new creator handle finishes rendering,
-                // it sets the baseline for the new reel instead of double-counting!
-                lastShortDigest = ""
             }
 
             FloatingScrollCounterOverlayManager.updateCounter(
@@ -487,7 +486,7 @@ object ShortsReelsDetector {
         var isHomeSelected = false
         var isSearchSelected = false
         var isProfileSelected = false
-        var hasInstagramHeader = false
+        var hasInstagramHomeLogo = false
         var hasStoriesTray = false
         var isCarouselPost = false
         var homeTabNode: AccessibilityNodeInfo? = null
@@ -527,8 +526,11 @@ object ShortsReelsDetector {
                     isProfileSelected = true
                 }
             }
-            if (textLower == "instagram" || descLower == "instagram" || descLower.contains("instagram logo") || resId.contains("action_bar_home_logo")) {
-                hasInstagramHeader = true
+            // Strict home logo / title logo on Home Feed
+            if (resId.contains("action_bar_home_logo") || resId.contains("title_logo") ||
+                descLower == "instagram home feed" || descLower == "instagram logo"
+            ) {
+                hasInstagramHomeLogo = true
             }
             if (textLower == "your story" || descLower == "your story" || resId.contains("stories_tray") || resId.contains("story_tray")) {
                 hasStoriesTray = true
@@ -537,15 +539,18 @@ object ShortsReelsDetector {
                 isCarouselPost = true
             }
 
-            // 2. Creator handle (handles raw username from node ID, 'Reel by X', 'Profile picture of X', or '@X')
-            if (creatorHandle.isEmpty()) {
-                if (resId.contains("clips_author_username") || resId.contains("author_username")) {
+            // 2. Creator handle (prioritize clips_author_username or Reel by X from active Reels player)
+            if (resId.contains("clips_author_username")) {
+                val h = if (text.isNotBlank()) text else desc
+                if (h.isNotBlank() && h.length in 2..40) creatorHandle = h
+            } else if (desc.startsWith("Reel by ", ignoreCase = true)) {
+                val handle = desc.substringAfter("Reel by ").substringBefore(".").trim()
+                if (handle.isNotEmpty() && handle.length in 2..40) {
+                    creatorHandle = handle
+                }
+            } else if (creatorHandle.isEmpty()) {
+                if (resId.contains("author_username")) {
                     creatorHandle = if (text.isNotBlank()) text else desc
-                } else if (desc.startsWith("Reel by ", ignoreCase = true)) {
-                    val handle = desc.substringAfter("Reel by ").substringBefore(".").trim()
-                    if (handle.isNotEmpty() && handle.length in 2..40) {
-                        creatorHandle = handle
-                    }
                 } else if (desc.startsWith("Profile picture of ", ignoreCase = true)) {
                     val handle = desc.substringAfter("Profile picture of ").trim()
                     if (handle.isNotEmpty() && handle.length in 2..40) {
@@ -565,9 +570,9 @@ object ShortsReelsDetector {
                 }
             }
 
-            // 4. Bottom Reels tab selected
+            // 4. Bottom Reels tab selected (matches clips_tab when selected, or tab_icon child selected)
             if (resId.contains("clips_tab") || (descLower.contains("reels") && (descLower.contains("tab") || descLower.contains("selected")))) {
-                if (node.isSelected || node.isFocused || descLower.contains("selected") || resId.contains("clips_tab")) {
+                if (node.isSelected || node.isFocused || descLower.contains("selected")) {
                     isReelsTabSelected = true
                 }
             }
@@ -606,24 +611,26 @@ object ShortsReelsDetector {
                 hasFollowButton = true
             }
 
-            // Header text "Reels" at top (e.g. clips_viewer_action_bar_title or "Reels v")
+            // Header text "Reels" at top (e.g. clips_viewer_action_bar_title or clickable "Reels")
             if (resId.contains("clips_viewer_action_bar") || resId.contains("clips_action_bar") ||
                 (resId.contains("action_bar_title") && textLower == "reels") ||
-                (textLower == "reels" && node.isClickable)
+                (textLower == "reels" && (node.isClickable || resId.contains("title")))
             ) {
                 hasReelsHeader = true
             }
         }
 
-        // DEFINITIVE EXCLUSION:
-        // If user is on the Home feed, Stories bar, Search, Profile, or Feed Carousel:
-        // NEVER detect as Reels!
-        if (isHomeSelected || hasInstagramHeader || hasStoriesTray || isCarouselPost || isSearchSelected || isProfileSelected) {
+        // Targeted Exclusion:
+        // Exclude only if user is explicitly on Search or Profile tab,
+        // OR if not in Reels tab/header and Home feed signals are present (Home tab, Home logo, Stories, Carousel)
+        val isExplicitExcluded = isSearchSelected || isProfileSelected ||
+            (!isReelsTabSelected && !hasReelsHeader && (isHomeSelected || hasInstagramHomeLogo || hasStoriesTray || isCarouselPost))
+
+        if (isExplicitExcluded) {
             return null
         }
 
         // STABLE REEL DIGEST: Only creator handle!
-        // Never include animated scrolling audio marquees or counters to prevent fake reel counts while watching!
         val digest = if (creatorHandle.isNotBlank()) creatorHandle else ""
 
         // Case 1: Bottom Reels tab selected — definitive
@@ -653,11 +660,13 @@ object ShortsReelsDetector {
             val resId = node.viewIdResourceName?.lowercase() ?: ""
             val text = node.text?.toString()?.lowercase() ?: ""
 
-            // Main Instagram header text or logo
-            if (text.contains("instagram") || desc.contains("instagram") || resId.contains("action_bar_home_logo")) return true
+            // Main Instagram header home logo (strictly Home Feed)
+            if (resId.contains("action_bar_home_logo") || resId.contains("title_logo") ||
+                desc == "instagram home feed" || desc == "instagram logo"
+            ) return true
             // Stories tray
-            if (text.contains("your story") || desc.contains("your story") || resId.contains("stories_tray") || resId.contains("story_tray")) return true
-            // Home / Feed tab
+            if (text == "your story" || desc == "your story" || resId.contains("stories_tray") || resId.contains("story_tray")) return true
+            // Home / Feed tab selected
             if (resId.contains("feed_tab") && (node.isSelected || desc.contains("selected"))) return true
             // Messages / Direct
             if (resId.contains("feed_drawer") || resId.contains("direct_tab") && (node.isSelected || desc.contains("selected"))) return true
