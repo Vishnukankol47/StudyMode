@@ -3,7 +3,7 @@
 > **Mindful Shorts & Reels Counter, Deep Exam Focus & Anti-Doomscrolling for Android.**  
 > Break mindless doomscrolling on YouTube Shorts & Instagram Reels, lock in with Zen Mode, and reclaim your attention — 100% on-device, zero ads, zero tracking.
 
-[![Release](https://img.shields.io/badge/Release-v1.0.3-22c55e?style=for-the-badge&logo=android)](https://github.com/Vishnukankol47/StudyMode/releases/latest)
+[![Release](https://img.shields.io/badge/Release-v1.0.4-22c55e?style=for-the-badge&logo=android)](https://github.com/Vishnukankol47/StudyMode/releases/latest)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue?style=for-the-badge)](LICENSE)
 [![Privacy](https://img.shields.io/badge/Privacy-100%25%20On--Device-emerald?style=for-the-badge)](README.md#-permissions--privacy-transparency)
 [![UPI Safe](https://img.shields.io/badge/Banking-100%25%20UPI%20Safe-teal?style=for-the-badge)](#-strict-banking--upi-isolation)
@@ -97,7 +97,7 @@ Instead of jarring, abrupt blocks, StudyMode introduces an intentional pause (e.
 
 ### Option 1: Direct APK Download (Recommended)
 1. Download the latest release binary:
-   👉 **[Download StudyMode-v1.0.3.apk](https://github.com/Vishnukankol47/StudyMode/releases/latest/download/StudyMode-v1.0.3.apk)**
+   👉 **[Download StudyMode-v1.0.4.apk](https://github.com/Vishnukankol47/StudyMode/releases/latest/download/StudyMode-v1.0.4.apk)**
 2. Tap the downloaded file on your Android device (Android 8.0+ / API 26+) and tap **Install**.
 3. Launch StudyMode and follow the clean 3-step setup guide.
 

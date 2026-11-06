@@ -214,8 +214,12 @@ class AppMonitorService : Service() {
             updateUsageNotification(newPackage, store)
         }
 
-        // Zero-Accessibility Safe Mode: Stand by with AudioPlaybackCallback; do NOT pop up HUD on Home feed!
-        if (AppBlockingAccessibilityService.activeInstance == null) {
+        // Zero-Accessibility Safe Mode: Stand by with AudioPlaybackCallback only when Accessibility is OFF
+        if (AppBlockingAccessibilityService.activeInstance != null) {
+            if (isAudioCallbackRegistered) {
+                unregisterFallbackAudioCallback()
+            }
+        } else {
             if (isShortVideoHost) {
                 if (!isAudioCallbackRegistered) {
                     registerFallbackAudioCallback()
@@ -294,9 +298,6 @@ class AppMonitorService : Service() {
                         val isSwipe = lastPlayerInterfaceId != null
                         lastPlayerInterfaceId = piidMatch
 
-                        if (isSwipe) {
-                            store.incrementTodayReelsScrolledCount()
-                        }
                         android.util.Log.d("StudyMode", "Zero-Accessibility Fallback: Reel active in $platformName (piid: $piidMatch, isSwipe=$isSwipe)")
 
                         if (store.isFloatingScrollCounterEnabled() && Settings.canDrawOverlays(this)) {

@@ -1492,6 +1492,60 @@ class LocalStudyStore(context: Context) {
         blockerPreferences.edit().putInt(KEY_SHORTS_SCROLL_LIMIT, limit).apply()
     }
 
+    fun platformSlug(platform: String): String {
+        val lower = platform.lowercase()
+        return when {
+            "youtube" in lower -> "youtube_shorts"
+            "instagram" in lower -> "instagram_reels"
+            "snapchat" in lower -> "snapchat_spotlight"
+            "facebook" in lower -> "facebook_reels"
+            else -> "general"
+        }
+    }
+
+    fun todayPlatformScrolledCount(platform: String): Int {
+        val slug = platformSlug(platform)
+        val today = Calendar.getInstance().let { "${it.get(Calendar.YEAR)}-${it.get(Calendar.DAY_OF_YEAR)}" }
+        val savedDay = blockerPreferences.getString("${KEY_REELS_SCROLLED_DAY}_$slug", "")
+        return if (savedDay == today) blockerPreferences.getInt("${KEY_REELS_SCROLLED_COUNT}_$slug", 0) else 0
+    }
+
+    fun incrementTodayPlatformScrolledCount(platform: String) {
+        val slug = platformSlug(platform)
+        val today = Calendar.getInstance().let { "${it.get(Calendar.YEAR)}-${it.get(Calendar.DAY_OF_YEAR)}" }
+        val savedDay = blockerPreferences.getString("${KEY_REELS_SCROLLED_DAY}_$slug", "")
+        val currentCount = if (savedDay == today) blockerPreferences.getInt("${KEY_REELS_SCROLLED_COUNT}_$slug", 0) else 0
+        val totalCount = todayReelsScrolledCount()
+        blockerPreferences.edit()
+            .putString("${KEY_REELS_SCROLLED_DAY}_$slug", today)
+            .putInt("${KEY_REELS_SCROLLED_COUNT}_$slug", currentCount + 1)
+            .putString(KEY_REELS_SCROLLED_DAY, today)
+            .putInt(KEY_REELS_SCROLLED_COUNT, totalCount + 1)
+            .apply()
+    }
+
+    fun todayPlatformWatchTimeSeconds(platform: String): Long {
+        val slug = platformSlug(platform)
+        val today = Calendar.getInstance().let { "${it.get(Calendar.YEAR)}-${it.get(Calendar.DAY_OF_YEAR)}" }
+        val savedDay = blockerPreferences.getString("${KEY_REELS_WATCH_TIME_DAY}_$slug", "")
+        return if (savedDay == today) blockerPreferences.getLong("${KEY_REELS_WATCH_TIME_SECONDS}_$slug", 0L) else 0L
+    }
+
+    fun addTodayPlatformWatchTimeSeconds(platform: String, seconds: Long) {
+        if (seconds <= 0L) return
+        val slug = platformSlug(platform)
+        val today = Calendar.getInstance().let { "${it.get(Calendar.YEAR)}-${it.get(Calendar.DAY_OF_YEAR)}" }
+        val savedDay = blockerPreferences.getString("${KEY_REELS_WATCH_TIME_DAY}_$slug", "")
+        val current = if (savedDay == today) blockerPreferences.getLong("${KEY_REELS_WATCH_TIME_SECONDS}_$slug", 0L) else 0L
+        val totalSeconds = todayReelsWatchTimeSeconds()
+        blockerPreferences.edit()
+            .putString("${KEY_REELS_WATCH_TIME_DAY}_$slug", today)
+            .putLong("${KEY_REELS_WATCH_TIME_SECONDS}_$slug", current + seconds)
+            .putString(KEY_REELS_WATCH_TIME_DAY, today)
+            .putLong(KEY_REELS_WATCH_TIME_SECONDS, totalSeconds + seconds)
+            .apply()
+    }
+
     fun todayReelsScrolledCount(): Int {
         val today = Calendar.getInstance().let { "${it.get(Calendar.YEAR)}-${it.get(Calendar.DAY_OF_YEAR)}" }
         val savedDay = blockerPreferences.getString(KEY_REELS_SCROLLED_DAY, "")
@@ -1499,13 +1553,7 @@ class LocalStudyStore(context: Context) {
     }
 
     fun incrementTodayReelsScrolledCount() {
-        val today = Calendar.getInstance().let { "${it.get(Calendar.YEAR)}-${it.get(Calendar.DAY_OF_YEAR)}" }
-        val savedDay = blockerPreferences.getString(KEY_REELS_SCROLLED_DAY, "")
-        val currentCount = if (savedDay == today) blockerPreferences.getInt(KEY_REELS_SCROLLED_COUNT, 0) else 0
-        blockerPreferences.edit()
-            .putString(KEY_REELS_SCROLLED_DAY, today)
-            .putInt(KEY_REELS_SCROLLED_COUNT, currentCount + 1)
-            .apply()
+        incrementTodayPlatformScrolledCount("general")
     }
 
     fun todayReelsWatchTimeSeconds(): Long {
@@ -1515,14 +1563,7 @@ class LocalStudyStore(context: Context) {
     }
 
     fun addTodayReelsWatchTimeSeconds(seconds: Long) {
-        if (seconds <= 0L) return
-        val today = Calendar.getInstance().let { "${it.get(Calendar.YEAR)}-${it.get(Calendar.DAY_OF_YEAR)}" }
-        val savedDay = blockerPreferences.getString(KEY_REELS_WATCH_TIME_DAY, "")
-        val current = if (savedDay == today) blockerPreferences.getLong(KEY_REELS_WATCH_TIME_SECONDS, 0L) else 0L
-        blockerPreferences.edit()
-            .putString(KEY_REELS_WATCH_TIME_DAY, today)
-            .putLong(KEY_REELS_WATCH_TIME_SECONDS, current + seconds)
-            .apply()
+        addTodayPlatformWatchTimeSeconds("general", seconds)
     }
 
     fun resetTodayReelsIfNewDay(): Boolean {
@@ -1530,12 +1571,20 @@ class LocalStudyStore(context: Context) {
         val savedCountDay = blockerPreferences.getString(KEY_REELS_SCROLLED_DAY, "")
         val savedTimeDay = blockerPreferences.getString(KEY_REELS_WATCH_TIME_DAY, "")
         if (savedCountDay != today || savedTimeDay != today) {
-            blockerPreferences.edit()
+            val editor = blockerPreferences.edit()
                 .putString(KEY_REELS_SCROLLED_DAY, today)
                 .putInt(KEY_REELS_SCROLLED_COUNT, 0)
                 .putString(KEY_REELS_WATCH_TIME_DAY, today)
                 .putLong(KEY_REELS_WATCH_TIME_SECONDS, 0L)
-                .apply()
+
+            val slugs = listOf("youtube_shorts", "instagram_reels", "snapchat_spotlight", "facebook_reels", "general")
+            for (slug in slugs) {
+                editor.putString("${KEY_REELS_SCROLLED_DAY}_$slug", today)
+                editor.putInt("${KEY_REELS_SCROLLED_COUNT}_$slug", 0)
+                editor.putString("${KEY_REELS_WATCH_TIME_DAY}_$slug", today)
+                editor.putLong("${KEY_REELS_WATCH_TIME_SECONDS}_$slug", 0L)
+            }
+            editor.apply()
             return true
         }
         return false

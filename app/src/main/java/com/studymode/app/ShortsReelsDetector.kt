@@ -200,6 +200,9 @@ object ShortsReelsDetector {
             if (isScrollEvent && (now - lastScrollEventMillis >= 1200L)) {
                 lastScrollEventMillis = now
                 isNewReel = true
+                // Reset lastShortDigest so that when the new creator handle finishes rendering,
+                // it sets the baseline for the new reel instead of double-counting!
+                lastShortDigest = ""
             }
 
             FloatingScrollCounterOverlayManager.updateCounter(

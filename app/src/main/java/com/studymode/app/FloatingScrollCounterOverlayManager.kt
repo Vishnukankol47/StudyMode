@@ -71,8 +71,10 @@ object FloatingScrollCounterOverlayManager {
         if (activeDayKey.isEmpty()) {
             activeDayKey = today
             store.resetTodayReelsIfNewDay()
-            todayDisplayCount = store.todayReelsScrolledCount()
-            todayActiveWatchSeconds = store.todayReelsWatchTimeSeconds()
+            if (currentPlatform.isNotEmpty()) {
+                todayDisplayCount = store.todayPlatformScrolledCount(currentPlatform)
+                todayActiveWatchSeconds = store.todayPlatformWatchTimeSeconds(currentPlatform)
+            }
             lastSecondsSyncTime = System.currentTimeMillis()
         } else if (today != activeDayKey) {
             // 12:00 AM Midnight Rollover!
@@ -99,7 +101,9 @@ object FloatingScrollCounterOverlayManager {
                 if (now - lastSecondsSyncTime >= 5000L) {
                     val delta = ((now - lastSecondsSyncTime) / 1000L).coerceAtLeast(1L)
                     lastSecondsSyncTime = now
-                    currentStore?.addTodayReelsWatchTimeSeconds(delta)
+                    if (currentPlatform.isNotEmpty()) {
+                        currentStore?.addTodayPlatformWatchTimeSeconds(currentPlatform, delta)
+                    }
                 }
 
                 updateTextAndColor()
@@ -129,6 +133,16 @@ object FloatingScrollCounterOverlayManager {
         currentStore = store
         checkDayRollover(store)
 
+        // If user switched platform (e.g. from Instagram Reels to YouTube Shorts), flush & switch buckets
+        val isPlatformChanged = currentPlatform.isNotEmpty() && currentPlatform != platformName
+        if (isPlatformChanged) {
+            flushActiveSecondsToStore()
+            currentPlatform = platformName
+            todayDisplayCount = store.todayPlatformScrolledCount(platformName)
+            todayActiveWatchSeconds = store.todayPlatformWatchTimeSeconds(platformName)
+            lastSecondsSyncTime = System.currentTimeMillis()
+        }
+
         val now = System.currentTimeMillis()
 
         // Debounce swipe events (min 1200ms between reels)
@@ -136,8 +150,8 @@ object FloatingScrollCounterOverlayManager {
         if (isScrollEvent) {
             if (now - lastScrollEventMillis >= 1200L) {
                 lastScrollEventMillis = now
-                store.incrementTodayReelsScrolledCount()
-                todayDisplayCount = store.todayReelsScrolledCount()
+                store.incrementTodayPlatformScrolledCount(platformName)
+                todayDisplayCount = store.todayPlatformScrolledCount(platformName)
                 countIncremented = true
 
                 // Check scroll limit
@@ -154,18 +168,19 @@ object FloatingScrollCounterOverlayManager {
             checkDayRollover(store)
 
             if (!isShowing || overlayView == null || currentPlatform != platformName) {
+                if (isShowing && currentPlatform != platformName) {
+                    flushActiveSecondsToStore()
+                }
                 currentPlatform = platformName
-                if (!isShowing) {
+                if (!isShowing || currentPlatform != platformName) {
+                    todayDisplayCount = store.todayPlatformScrolledCount(platformName)
                     if (todayDisplayCount <= 0) {
-                        todayDisplayCount = store.todayReelsScrolledCount()
-                        if (todayDisplayCount <= 0) {
-                            todayDisplayCount = if (countIncremented) 2 else 1
-                            if (!countIncremented) {
-                                store.incrementTodayReelsScrolledCount()
-                            }
+                        todayDisplayCount = if (countIncremented) 2 else 1
+                        if (!countIncremented) {
+                            store.incrementTodayPlatformScrolledCount(platformName)
                         }
                     }
-                    todayActiveWatchSeconds = store.todayReelsWatchTimeSeconds()
+                    todayActiveWatchSeconds = store.todayPlatformWatchTimeSeconds(platformName)
                     lastSecondsSyncTime = System.currentTimeMillis()
                 }
                 showOverlay(context, platformName)
@@ -404,10 +419,10 @@ object FloatingScrollCounterOverlayManager {
 
     private fun flushActiveSecondsToStore() {
         val now = System.currentTimeMillis()
-        if (lastSecondsSyncTime > 0L && now > lastSecondsSyncTime) {
+        if (lastSecondsSyncTime > 0L && now > lastSecondsSyncTime && currentPlatform.isNotEmpty()) {
             val delta = ((now - lastSecondsSyncTime) / 1000L).coerceAtLeast(0L)
             if (delta > 0L) {
-                currentStore?.addTodayReelsWatchTimeSeconds(delta)
+                currentStore?.addTodayPlatformWatchTimeSeconds(currentPlatform, delta)
             }
         }
         lastSecondsSyncTime = System.currentTimeMillis()
